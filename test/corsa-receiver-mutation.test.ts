@@ -146,4 +146,29 @@ export function readOnly(values: readonly number[]): number { return values.leng
       expect(reasonText(result, "assignInto")).toContain("the value assign writes through");
     });
   });
+
+  it("decides a receiver write by whether the receiver was allocated where it is written", async () => {
+    await check(`export function lastSegment(source: string): string { return source.split("/").pop() ?? ""; }
+export function sortedCopy(values: number[]): number[] { return values.slice().sort(); }
+export function sortedLiteral(): number[] { return [3, 1, 2].sort(); }
+export function dynamicSeparator(source: string, separator: string): string { return source.split(separator).pop() ?? ""; }
+export function sortedTwice(values: number[]): number[] { return values.sort().reverse(); }
+declare function same(values: number[]): number[];
+export function throughOpaque(values: number[]): number | undefined { return same(values).pop(); }
+`, (result) => {
+      // A receiver the immediately preceding call allocated, or a literal written at the site, is held by
+      // nothing else yet, so writing it is private to this boundary.
+      for (const name of ["lastSegment", "sortedCopy", "sortedLiteral"]) {
+        expect([name, row(result, name)?.evidence, effectsOf(result, name)]).toEqual([name, "inferred", []]);
+      }
+      // A separator that is not one string literal may select a custom Symbol.split, so nothing is fresh.
+      expect(row(result, "dynamicSeparator")?.evidence).toBe("unknown");
+      // `sort` returns its receiver, so the second write lands on the caller's array.
+      expect(row(result, "sortedTwice")?.evidence).toBe("unknown");
+      expect(reasonText(result, "sortedTwice")).toContain("the value reverse writes through");
+      // A call with no reviewed contract may return a value the caller already holds.
+      expect(row(result, "throughOpaque")?.evidence).toBe("unknown");
+      expect(reasonText(result, "throughOpaque")).toContain("the value pop writes through");
+    });
+  });
 });

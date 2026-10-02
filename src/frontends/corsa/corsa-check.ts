@@ -754,6 +754,10 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       // effect language deliberately leaves uncovered by a declared `Throw<Error>`.
       // Member writes a reviewed contract accounted for. Everything else the source writes is settled below.
       const reviewedWriteSpans = new Set<string>();
+      // Calls whose reviewed contract says the result is newly allocated, and receiver writes waiting on them: a
+      // receiver site may be visited before the call that produces its receiver, so both are settled per file.
+      const freshResultCalls = new Set<string>();
+      const receiverWrites: Array<{ caller: ReturnType<typeof ensure>; span: string; name: string }> = [];
       // An implicit ToPrimitive runs the value's own `Symbol.toPrimitive`, `valueOf` or `toString` and throws
       // TypeError when none of them yields a primitive. That is the same reviewed claim `String` and `Number`
       // already carry, and leaving it unmodelled made `return `${value}`` a positive proof of effect freedom
@@ -820,9 +824,9 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         // A receiver write is the whole observable of this call and this path cannot name what was written. Only
         // when nothing else was rendered: a contract that also reports a capability already leaves the boundary
         // something to say, and `Object.freeze(literal)` writes through an argument rather than a receiver.
-        if (rendered.writesThroughReceiver && rendered.names.length === 0) {
-          caller.unclassified = true;
-          caller.unresolved.add(`the value ${site.name} writes through`);
+        if (rendered.writesThroughReceiver && rendered.names.length === 0) receiverWrites.push({ caller, span, name: site.name });
+        if (contract.semantics?.primitives.some((primitive) => primitive.kind === "result" && primitive.refinement.kind === "fresh")) {
+          freshResultCalls.add(span);
         }
         // An argument the call allocates itself is held by nothing else yet, so writing it is private to the
         // call — `Object.freeze({ ... })`. Any other argument, and an arity this path could not read, is not.
@@ -1003,6 +1007,15 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
             if (member === null || declaredByDomLibrary(member) || isAccessorSymbol(member)) recordUnclassified(site);
           }
         }
+      }
+      // A receiver allocated where it is written is held by nothing else yet, so writing it is private to this
+      // boundary — `source.split("/").pop()`, `[3, 1, 2].sort()`. A call result counts only when its own reviewed
+      // contract says the result is fresh: `values.sort().reverse()` writes the caller's array twice.
+      for (const write of receiverWrites) {
+        const receiver = indexAccess.allocatedReceivers.get(write.span);
+        if (receiver?.kind === "literal" || (receiver?.kind === "call-result" && freshResultCalls.has(receiver.call))) continue;
+        write.caller.unclassified = true;
+        write.caller.unresolved.add(`the value ${write.name} writes through`);
       }
       // A write someone other than this boundary can see, and no region naming what changed. One a reviewed
       // contract accounted for is already carried by that contract's own terms; every other one leaves the

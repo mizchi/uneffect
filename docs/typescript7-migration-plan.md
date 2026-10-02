@@ -507,6 +507,19 @@ escape 解析、オブジェクト同一性 vs 宣言同一性、メンバチェ
   `Object.assign(target, ...)` / `Object.defineProperty(o, ...)` は unresolved。読むのは呼出地点の構文
   だけなので、これは「この値はまだ誰も持っていない」であって「この値は決して外に出ない」ではない。
   src/ では 0 行動かない（この repo の `Object.freeze` はすべて新規リテラル）。
+- ~~receiver を書き換える builtin の freshness~~ — 直接の受け手に限って閉じた。receiver 書き換えだけの
+  呼出は、受け手が**その場で確保された値**のときだけ見逃す。その場に書かれた配列/オブジェクトリテラル
+  (`[3, 1, 2].sort()`) か、受け手として直接書かれた呼出で、その呼出の reviewed contract が
+  `result: fresh` を宣言しているもの (`source.split("/").pop()`、`values.slice().sort()`) である。
+  `sort` は受け手自身を返すので `values.sort().reverse()` は呼び手の配列への 2 回目の書き込みで
+  unresolved のまま。contract の無い呼出の結果 (`same(values).pop()`)、literal でない separator の
+  `split` も unresolved。構文側は `allocatedReceivers` として受け手の形だけを公開し、fresh かどうかは
+  contract が決める。受け手の site が結果を作る呼出より先に訪問されうるので、判定はファイル単位で
+  すべての site を解決した後に行う。束縛を経由する形 (`const parts = s.split("/"); parts.pop()`) は
+  escape 解析が要るので対象外。#77 の報告 (Corsa 既定経路で `split`/`pop` が unknown) が根拠。
+  実測: src/ の summary 約 14,200 件で 19 件が unknown を抜け (18 が `inferred`、1 が `trusted`)、
+  134 件が write-through の理由を 1 つ失った。新たに write-through の理由を得た行は 0。
+  unknown 9299 → 9282。
 - **argument 書き換えと freshness** は上に記した通り未解決。
 - **`RegExp#test` / `exec` の holdback は理由を書き直した。** catalog がこの 2 member を外していた理由は
   「native summary が `mutate` を描画できないので、admit すると正直な unresolved が無音の空 effect になる」

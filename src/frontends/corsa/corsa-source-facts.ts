@@ -128,6 +128,12 @@ export interface CorsaSourceFacts {
    */
   readonly freshArguments: ReadonlyMap<string, readonly boolean[]>;
   /**
+   * Per member call, a receiver that did not exist before the expression that holds it: a literal written as the
+   * receiver, or the result of the call written immediately as the receiver, named by that call's span. Only the
+   * syntax is read; whether a call's result is fresh is what its reviewed contract says, decided by the check.
+   */
+  readonly allocatedReceivers: ReadonlyMap<string, AllocatedReceiver>;
+  /**
    * `${start}:${end}` of a member expression assigned an inline function, to that function's start offset. A
    * contract whose callback target is the assigned value composes with it, exactly as an argument callback does.
    */
@@ -243,6 +249,9 @@ function declaredBy(symbol: CorsaApiSymbolFact | null | undefined, pattern: RegE
 
 const domLibrary = /(?:^|[/\\])lib\.dom\.d\.ts$/;
 const ecmaScriptLibrary = /(?:^|[/\\])lib\.es[\w.]*\.d\.ts$/i;
+
+/** A receiver allocated where it is written: a literal, or the result of the call that is the receiver. */
+export type AllocatedReceiver = { readonly kind: "literal" } | { readonly kind: "call-result"; readonly call: string };
 
 function unwrap(node: EstreeNode): EstreeNode {
   let current = node;
@@ -878,6 +887,7 @@ export function analyzeCorsaSourceFacts(
   const inlineFunctionArguments = new Map<string, readonly (number | null)[]>();
   const callArgumentIdentifiers = new Map<string, readonly (number | null)[]>();
   const freshArguments = new Map<string, readonly boolean[]>();
+  const allocatedReceivers = new Map<string, AllocatedReceiver>();
   const assignedInlineFunctions = new Map<string, number>();
   const receiverTypes = new Map<string, CorsaApiTypeFact>();
   const throws: Array<{ start: number; calleePosition: number | null }> = [];
@@ -1018,6 +1028,15 @@ export function analyzeCorsaSourceFacts(
           // A literal with a spread copies out of something else, but the object it produces is still new.
           return value.type === "ObjectExpression" || value.type === "ArrayExpression";
         }));
+      }
+      const callee = isNode(node.callee) ? unwrap(node.callee) : undefined;
+      if (node.type === "CallExpression" && callee?.type === "MemberExpression" && isNode(callee.object)) {
+        const receiver = unwrap(callee.object);
+        if (receiver.type === "ArrayExpression" || receiver.type === "ObjectExpression") {
+          allocatedReceivers.set(`${node.start}:${node.end}`, { kind: "literal" });
+        } else if (receiver.type === "CallExpression" && typeof receiver.start === "number" && typeof receiver.end === "number") {
+          allocatedReceivers.set(`${node.start}:${node.end}`, { kind: "call-result", call: `${receiver.start}:${receiver.end}` });
+        }
       }
     }
     for (const child of children(node)) parents.set(child, node);
@@ -1213,7 +1232,7 @@ export function analyzeCorsaSourceFacts(
     });
   }
   return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, observableWrites, receiverTypes, throws, coercions,
-    dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, freshArguments, assignedInlineFunctions, diagnostics };
+    dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, freshArguments, allocatedReceivers, assignedInlineFunctions, diagnostics };
 }
 
 function findDeclarator(root: EstreeNode, name: string): EstreeNode | undefined {
