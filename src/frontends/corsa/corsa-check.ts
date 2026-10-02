@@ -161,6 +161,16 @@ interface RenderedSemantics {
 }
 
 /**
+ * Whether a reviewed call keeps its receiver to itself: it has a contract, and no callback it invokes is handed
+ * the receiver as an argument or as `this` — `map((_, __, all) => all)` publishes the array it walks.
+ */
+function keepsReceiverPrivate(contract: BuiltinContract | undefined): boolean {
+  if (!contract) return false;
+  return !(contract.semantics?.primitives ?? []).some((primitive) => primitive.kind === "callback"
+    && (primitive.invocationArguments?.some((value) => value.kind === "receiver") || primitive.thisArgument?.kind === "receiver"));
+}
+
+/**
  * Render a reviewed contract into the terms this path can carry. A primitive it can neither render nor compose
  * makes the site unknown rather than an empty proof; `result` and `protocol` are refinement and temporal facts
  * that no capability claim here depends on.
@@ -757,6 +767,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       // Calls whose reviewed contract says the result is newly allocated, and receiver writes waiting on them: a
       // receiver site may be visited before the call that produces its receiver, so both are settled per file.
       const freshResultCalls = new Set<string>();
+      const contractsBySpan = new Map<string, BuiltinContract>();
       const receiverWrites: Array<{ caller: ReturnType<typeof ensure>; span: string; name: string }> = [];
       // An implicit ToPrimitive runs the value's own `Symbol.toPrimitive`, `valueOf` or `toString` and throws
       // TypeError when none of them yields a primitive. That is the same reviewed claim `String` and `Number`
@@ -825,6 +836,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         // when nothing else was rendered: a contract that also reports a capability already leaves the boundary
         // something to say, and `Object.freeze(literal)` writes through an argument rather than a receiver.
         if (rendered.writesThroughReceiver && rendered.names.length === 0) receiverWrites.push({ caller, span, name: site.name });
+        contractsBySpan.set(span, contract);
         if (contract.semantics?.primitives.some((primitive) => primitive.kind === "result" && primitive.refinement.kind === "fresh")) {
           freshResultCalls.add(span);
         }
@@ -1013,7 +1025,11 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       // contract says the result is fresh: `values.sort().reverse()` writes the caller's array twice.
       for (const write of receiverWrites) {
         const receiver = indexAccess.allocatedReceivers.get(write.span);
-        if (receiver?.kind === "literal" || (receiver?.kind === "call-result" && freshResultCalls.has(receiver.call))) continue;
+        const allocated = (value: { kind: "literal" } | { kind: "call-result"; call: string }): boolean =>
+          value.kind === "literal" || freshResultCalls.has(value.call);
+        if (receiver?.kind === "literal" || receiver?.kind === "call-result" ? allocated(receiver)
+          : receiver?.kind === "binding" && allocated(receiver.initializer)
+            && receiver.calls.every((call) => keepsReceiverPrivate(contractsBySpan.get(call)))) continue;
         write.caller.unclassified = true;
         write.caller.unresolved.add(`the value ${write.name} writes through`);
       }

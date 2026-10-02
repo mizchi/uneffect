@@ -515,11 +515,23 @@ escape 解析、オブジェクト同一性 vs 宣言同一性、メンバチェ
   unresolved のまま。contract の無い呼出の結果 (`same(values).pop()`)、literal でない separator の
   `split` も unresolved。構文側は `allocatedReceivers` として受け手の形だけを公開し、fresh かどうかは
   contract が決める。受け手の site が結果を作る呼出より先に訪問されうるので、判定はファイル単位で
-  すべての site を解決した後に行う。束縛を経由する形 (`const parts = s.split("/"); parts.pop()`) は
-  escape 解析が要るので対象外。#77 の報告 (Corsa 既定経路で `split`/`pop` が unknown) が根拠。
+  すべての site を解決した後に行う。#77 の報告 (Corsa 既定経路で `split`/`pop` が unknown) が根拠。
   実測: src/ の summary 約 14,200 件で 19 件が unknown を抜け (18 が `inferred`、1 が `trusted`)、
   134 件が write-through の理由を 1 つ失った。新たに write-through の理由を得た行は 0。
   unknown 9299 → 9282。
+
+  束縛を経由する形 (`const parts = s.split("/"); parts.pop()`) も、**束縛に誰も届かないこと**を示せる
+  ときだけ見逃す。`const` で初期化子がその場の確保 (リテラル、または contract が fresh と言う呼出) であり、
+  束縛への参照をすべて**名前ではなく symbol** で照合したうえで、どれもが同じ boundary の中で
+  member 呼出か member 読み出しの受け手であって、その値が捨てられるか primitive 型であること。primitive は
+  配列そのものではありえないので、どの使い方も配列を外に渡さない。catalog は `sort` が受け手を返すことを
+  `result: alias` として書いていないので、「alias と書かれていない」を「alias でない」とは読まない。
+  さらに check 側で、参照先の member 呼出がすべて contract を持ち、どのコールバックにも受け手を
+  (引数としても `this` としても) 渡さないことを要求する: `parts.map((_, __, all) => all)` は配列を公開する。
+  return、引数、別名、クロージャ内の参照、添字アクセス、書き込み、symbol が読めない参照、同名の
+  shorthand property (binding ではなく property の symbol を指す) は、どれも束縛を拒否する。
+  実測: src/ では既存 summary のうち 1 件が `unknown` → `trusted`、6 件が理由を 1 つ失い、後退は 0。
+  所要時間は変わらない (src/ 全体で 37 s → 36 s)。
 - **argument 書き換えと freshness** は上に記した通り未解決。
 - **`RegExp#test` / `exec` の holdback は理由を書き直した。** catalog がこの 2 member を外していた理由は
   「native summary が `mutate` を描画できないので、admit すると正直な unresolved が無音の空 effect になる」

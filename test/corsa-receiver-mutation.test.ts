@@ -171,4 +171,37 @@ export function throughOpaque(values: number[]): number | undefined { return sam
       expect(reasonText(result, "throughOpaque")).toContain("the value pop writes through");
     });
   });
+
+  it("follows a const binding to an allocation only while nothing else can reach it", async () => {
+    await check(`export const sink: string[][] = [];
+export function lastSegmentViaLocal(source: string): string { const parts = source.split("/"); return parts.pop() ?? ""; }
+export function parentPath(source: string): string { const parts = source.split("/"); parts.pop(); return parts.join("/"); }
+export function sortedLength(): number { const xs = [3, 1, 2]; xs.sort(); return xs.length; }
+export function escapesFirst(source: string): void { const parts = source.split("/"); sink.push(parts); parts.pop(); }
+export function seenByCallback(source: string): string[][] {
+  const parts = source.split("/");
+  const views = parts.map((_, __, all) => all);
+  parts.pop();
+  return views;
+}
+export function laterInClosure(source: string): () => string | undefined { const parts = source.split("/"); return () => parts.pop(); }
+export function heldByCaller(values: string[]): string | undefined { const parts = values; return parts.pop(); }
+`, (result) => {
+      // Every use of the binding is a member call that hands back a primitive or nothing, so the array never
+      // leaves this boundary and writing it is private.
+      for (const name of ["lastSegmentViaLocal", "parentPath", "sortedLength"]) {
+        expect([name, row(result, name)?.evidence, effectsOf(result, name)]).toEqual([name, "inferred", []]);
+      }
+      // A use that publishes the array, a callback handed the receiver, a closure that runs later, and a binding
+      // to a value the caller holds all let the write reach someone else.
+      for (const name of ["escapesFirst", "seenByCallback", "heldByCaller"]) {
+        expect([name, row(result, name)?.evidence]).toEqual([name, "unknown"]);
+        expect(reasonText(result, name)).toContain("the value pop writes through");
+      }
+      // The closure is the boundary that writes, and by then the array has left the boundary that made it.
+      const closure = result.summaries.find((item) => item.functionName === "<anonymous>"
+        && (item.unknownReasons ?? []).some((reason) => reason.message.includes("the value pop writes through")));
+      expect(closure?.evidence).toBe("unknown");
+    });
+  });
 });

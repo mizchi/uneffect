@@ -31,7 +31,8 @@ import { runtimeModuleDependencies, type RuntimeModuleDependency } from "../../m
  * `for` header. Interprocedural predicates, guards in an enclosing function, and
  * receiver reassignment remain explicit non-claims.
  */
-export type CorsaSourceFactsFrontend = Pick<CorsaApiFrontend, "getTypeAtPosition" | "getTypeAtRange" | "getSymbolOfType" | "getPropertyOfType">;
+export type CorsaSourceFactsFrontend = Pick<CorsaApiFrontend, "getTypeAtPosition" | "getTypeAtRange" | "getSymbolOfType" | "getPropertyOfType">
+  & Partial<Pick<CorsaApiFrontend, "getSymbolAtPosition">>;
 
 export interface CorsaSourceFactsOptions {
   /** `Owner#member` keys of the reviewed `lib.dom` contracts the check can select. */
@@ -251,7 +252,15 @@ const domLibrary = /(?:^|[/\\])lib\.dom\.d\.ts$/;
 const ecmaScriptLibrary = /(?:^|[/\\])lib\.es[\w.]*\.d\.ts$/i;
 
 /** A receiver allocated where it is written: a literal, or the result of the call that is the receiver. */
-export type AllocatedReceiver = { readonly kind: "literal" } | { readonly kind: "call-result"; readonly call: string };
+export type AllocatedReceiver =
+  | { readonly kind: "literal" }
+  | { readonly kind: "call-result"; readonly call: string }
+  /**
+   * A `const` binding to a literal or a call result whose every use is a member call or a member read handing
+   * back a primitive or nothing. `calls` is every such member call; the check admits the binding only when the
+   * initializer is fresh and none of those calls passes the receiver to a callback.
+   */
+  | { readonly kind: "binding"; readonly initializer: { readonly kind: "literal" } | { readonly kind: "call-result"; readonly call: string }; readonly calls: readonly string[] };
 
 function unwrap(node: EstreeNode): EstreeNode {
   let current = node;
@@ -888,6 +897,8 @@ export function analyzeCorsaSourceFacts(
   const callArgumentIdentifiers = new Map<string, readonly (number | null)[]>();
   const freshArguments = new Map<string, readonly boolean[]>();
   const allocatedReceivers = new Map<string, AllocatedReceiver>();
+  const constDeclaratorCandidates: EstreeNode[] = [];
+  const identifiersByName = new Map<string, EstreeNode[]>();
   const assignedInlineFunctions = new Map<string, number>();
   const receiverTypes = new Map<string, CorsaApiTypeFact>();
   const throws: Array<{ start: number; calleePosition: number | null }> = [];
@@ -1040,6 +1051,13 @@ export function analyzeCorsaSourceFacts(
       }
     }
     for (const child of children(node)) parents.set(child, node);
+    if (node.type === "VariableDeclarator" && isNode(node.id) && node.id.type === "Identifier" && isNode(node.init)) {
+      constDeclaratorCandidates.push(node);
+    }
+    if (node.type === "Identifier" && typeof node.name === "string") {
+      const list = identifiersByName.get(node.name);
+      if (list) list.push(node); else identifiersByName.set(node.name, [node]);
+    }
     if (node.type === "MemberExpression" && node.computed === true && isNode(node.object) && isNode(node.property)) computedMembers.push(node);
     if (node.type === "MemberExpression" && node.computed !== true && isNode(node.object) && isNode(node.property)
       && unwrap(node.object).type === "ArrayExpression" && typeof node.property.start === "number") {
@@ -1064,6 +1082,77 @@ export function analyzeCorsaSourceFacts(
     if ((node.type === "ForOfStatement" || node.type === "ForInStatement") && isNode(node.left)
       && node.left.type !== "VariableDeclaration") collectWriteTargets(node.left, assignmentTargets);
   });
+  const boundaryTypes = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "StaticBlock", "PropertyDefinition"]);
+  const wrapperTypes = new Set(["ParenthesizedExpression", "TSAsExpression", "TSNonNullExpression", "TSSatisfiesExpression", "TSTypeAssertion"]);
+  const enclosingBoundary = (node: EstreeNode): EstreeNode | undefined => {
+    for (let current = parents.get(node); current; current = parents.get(current)) if (boundaryTypes.has(current.type ?? "")) return current;
+    return undefined;
+  };
+  /** The expression a value is used as, past the parentheses and type-only wrappers that do not change it. */
+  const usedAs = (node: EstreeNode): { node: EstreeNode; parent: EstreeNode | undefined } => {
+    let current = node;
+    for (let parent = parents.get(current); parent && wrapperTypes.has(parent.type ?? "") && parent.expression === current; parent = parents.get(current)) {
+      current = parent;
+    }
+    return { node: current, parent: parents.get(current) };
+  };
+  const yieldsPrimitive = (node: EstreeNode): boolean => convertsWithoutUserCode(typeOfExpression(node), standardMemberOf);
+  /**
+   * A `const` binding to an allocation that nothing but this boundary can reach. Every reference is matched by
+   * symbol, not by name, and has to be the receiver of a member call or member read in the declaring boundary
+   * whose value is a primitive or is discarded: such a use hands nothing back that could be the array itself,
+   * and a closure, a return, an argument or an alias is a use of another kind. A reference whose symbol this
+   * path cannot read, and a shorthand property of the same name (which names the property's symbol, not the
+   * binding's), refuse the binding instead of being skipped.
+   */
+  const privateAllocationBinding = (declarator: EstreeNode): Extract<AllocatedReceiver, { kind: "binding" }> | undefined => {
+    const declaration = parents.get(declarator);
+    const id = declarator.id as EstreeNode;
+    if (declaration?.type !== "VariableDeclaration" || declaration.kind !== "const" || !frontend.getSymbolAtPosition
+      || typeof id.start !== "number" || typeof id.name !== "string") return undefined;
+    const init = unwrap(declarator.init as EstreeNode);
+    const initializer = init.type === "ArrayExpression" || init.type === "ObjectExpression" ? { kind: "literal" as const }
+      : init.type === "CallExpression" && typeof init.start === "number" && typeof init.end === "number"
+        ? { kind: "call-result" as const, call: `${init.start}:${init.end}` } : undefined;
+    const boundary = enclosingBoundary(declarator);
+    if (!initializer || !boundary) return undefined;
+    const symbolAt = (position: number): string | null => {
+      try { return frontend.getSymbolAtPosition!(fileName, position)?.id ?? null; } catch { return null; }
+    };
+    const own = symbolAt(id.start);
+    if (own === null) return undefined;
+    const calls: string[] = [];
+    for (const reference of identifiersByName.get(id.name) ?? []) {
+      if (reference === id || typeof reference.start !== "number") continue;
+      const parent = parents.get(reference);
+      if (parent?.type === "MemberExpression" && parent.computed !== true && parent.property === reference) continue;
+      if (parent?.type === "Property" && parent.shorthand === true) return undefined;
+      if (parent?.type === "Property" && parent.computed !== true && parent.key === reference) continue;
+      const symbol = symbolAt(reference.start);
+      if (symbol === null) return undefined;
+      if (symbol !== own) continue;
+      if (enclosingBoundary(reference) !== boundary) return undefined;
+      const { node: receiver, parent: member } = usedAs(reference);
+      if (member?.type !== "MemberExpression" || member.computed === true || member.object !== receiver) return undefined;
+      const outer = parents.get(member);
+      if (outer?.type === "CallExpression" && outer.callee === member) {
+        if (typeof outer.start !== "number" || typeof outer.end !== "number") return undefined;
+        const { parent: consumer } = usedAs(outer);
+        if (consumer?.type !== "ExpressionStatement" && !yieldsPrimitive(outer)) return undefined;
+        calls.push(`${outer.start}:${outer.end}`);
+        continue;
+      }
+      // A member read leaves the array where it is; a write or a delete of one is a different use.
+      if ((outer?.type === "AssignmentExpression" && outer.left === member) || outer?.type === "UpdateExpression"
+        || (outer?.type === "UnaryExpression" && outer.operator === "delete") || !yieldsPrimitive(member)) return undefined;
+    }
+    return { kind: "binding", initializer, calls };
+  };
+  for (const declarator of constDeclaratorCandidates) {
+    const binding = privateAllocationBinding(declarator);
+    if (!binding) continue;
+    for (const call of binding.calls) allocatedReceivers.set(call, binding);
+  }
   const text = (node: EstreeNode): string => sourceText.slice(node.start, node.end).replace(/\s+/g, "");
   // One line-offset table per file; computing a line by slicing the source is linear in the file per diagnostic.
   const lineStarts = [0];
