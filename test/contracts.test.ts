@@ -92,6 +92,31 @@ describe("Hoare contract checker", () => {
     expect(failure?.artifact?.status).toBe("unsupported");
   });
 
+  it("keeps checking the other contracts in a file when one function is unsupported", async () => {
+    const result = await verifyContractObligations("partial.ts", `
+      /* uneffect:ensures result > 0 */
+      function value() { for (;;) break; return 1 }
+      /* uneffect:ensures result === x */
+      function identity(x: Int): Int { return x }
+      /* uneffect:ensures result === x + 1 */
+      function wrong(x: Int): Int { return x }
+      /* uneffect:ensures result > 0 */
+      function relies(): Int { return value() }
+    `);
+    const statuses = (name: string) => result.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === name).map((artifact) => artifact.status);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "value", clause: "unsupported" }),
+    ]));
+    // The rejected function still names itself, so a caller resting on its contract can find that it failed.
+    expect(statuses("value")).toEqual(["unsupported"]);
+    // A rejection in one body says nothing about another, so those are still checked.
+    expect(statuses("identity")).toEqual(["verified"]);
+    expect(statuses("wrong")).toContain("counterexample");
+    // A caller whose proof would rest on the unchecked function's contract is not a proof.
+    expect(statuses("relies")).not.toContain("verified");
+  });
+
   it("returns machine-readable evidence for successful obligations", async () => {
     const result = await verifyContractObligations("proof.ts", `
       /* uneffect:ensures result === x */

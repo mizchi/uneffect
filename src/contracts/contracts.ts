@@ -1,7 +1,7 @@
 import ts from "../support/typescript-compiler.js";
 import { createHash } from "node:crypto";
 import type { DiagnosticNote } from "../support/diagnostics.js";
-import { InvariantLoweringError, lowerInvariantProgram, type ContractControlFlowEvidence, type ExternalContractBinding, type InvariantObligation } from "./invariant-ir.js";
+import { InvariantLoweringError, lowerInvariantProgram, lowerInvariantProgramPerFunction, type ContractControlFlowEvidence, type ExternalContractBinding, type InvariantObligation } from "./invariant-ir.js";
 import type { Z3ExecutionOptions } from "../backends/z3.js";
 import { formatEffect } from "../effects/capabilities.js";
 import type { EffectSummary } from "../effects/effects.js";
@@ -156,26 +156,37 @@ export async function verifyContractObligations(
 ): Promise<ContractVerificationResult> {
   if (!hasContractVerificationCandidates(text, options)) return { diagnostics: [], artifacts: [] };
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  let obligations: InvariantObligation[];
-  try {
-    obligations = lowerInvariantProgram(fileName, text, program, options);
-  } catch (cause) {
+  /** A construct outside the verified subset: no obligation was generated for the function that holds it. */
+  const unsupported = (cause: unknown): { artifact: VerificationArtifact; diagnostic: ContractDiagnostic } => {
     const owner = unsupportedOwner(source, cause);
     const message = cause instanceof Error ? cause.message : String(cause);
-    const artifact: VerificationArtifact = { obligationId: "unsupported", status: "unsupported", evidence: "unknown", source: { fileName, span: owner.span }, message };
     const construct = text.slice(owner.span.start, owner.span.end).split(/\r?\n/u)[0]!.trim();
+    const artifact: VerificationArtifact = {
+      obligationId: "unsupported", status: "unsupported", evidence: "unknown", source: { fileName, span: owner.span }, message,
+      // Named after its function, so a caller whose relational proof rests on this contract is not left verified.
+      ...(owner.functionName === "<file>" ? {} : { obligation: { functionName: owner.functionName, clause: "unsupported" as const, source: construct } }),
+    };
     const notes: DiagnosticNote[] = [
       { label: "construct", detail: construct.length > 80 ? `${construct.slice(0, 77)}...` : construct },
       { label: "because", detail: "the contract is not checked at all while this construct is outside the verified subset; no obligation was generated for this function" },
     ];
     if (cause instanceof InvariantLoweringError && cause.hint) notes.push({ label: "hint", detail: cause.hint });
-    return { artifacts: [artifact], diagnostics: [{ fileName, functionName: owner.functionName, clause: "unsupported", line: owner.line, message: `${owner.functionName} has no verified contract: ${message}`, notes, artifact }] };
+    return { artifact, diagnostic: { fileName, functionName: owner.functionName, clause: "unsupported", line: owner.line, message: `${owner.functionName} has no verified contract: ${message}`, notes, artifact } };
+  };
+  let lowered: { obligations: InvariantObligation[]; rejections: unknown[] };
+  try {
+    lowered = lowerInvariantProgramPerFunction(fileName, text, program, options);
+  } catch (cause) {
+    // A failure before any function is reached — reading the file's checker facts — rejects the whole file.
+    const { artifact, diagnostic } = unsupported(cause);
+    return { artifacts: [artifact], diagnostics: [diagnostic] };
   }
-
-  if (obligations.length === 0) return { diagnostics: [], artifacts: [] };
-  const { diagnostics, artifacts } = await solveContractObligations(fileName, obligations, position => lineAt(source, position), z3);
-  const reconciled = reconcileContractArtifacts(new Map([[fileName, text]]), artifacts);
-  return { diagnostics: [...diagnostics, ...reconciled.diagnostics], artifacts: reconciled.artifacts };
+  const rejected = lowered.rejections.map(unsupported);
+  if (lowered.obligations.length === 0 && rejected.length === 0) return { diagnostics: [], artifacts: [] };
+  const solved = lowered.obligations.length === 0 ? { diagnostics: [], artifacts: [] }
+    : await solveContractObligations(fileName, lowered.obligations, position => lineAt(source, position), z3);
+  const reconciled = reconcileContractArtifacts(new Map([[fileName, text]]), [...rejected.map((item) => item.artifact), ...solved.artifacts]);
+  return { diagnostics: [...rejected.map((item) => item.diagnostic), ...solved.diagnostics, ...reconciled.diagnostics], artifacts: reconciled.artifacts };
 }
 
 export async function verifyContracts(fileName: string, text: string): Promise<ContractDiagnostic[]> {

@@ -48,7 +48,10 @@ available on the diagnostic's `model` field and verification artifact.
 
 Constructs outside the verified subset are located at the offending statement,
 not at the first function in the file, and carry the edit that brings them back
-into the subset.
+into the subset. Such a construct leaves only its own function unchecked: every
+other contracted function in the file is still lowered and solved, and the
+rejected function's `unsupported` artifact names it, so a caller whose relational
+proof rests on its contract is not left `verified`.
 
 Malformed Effect-set payloads are ordinary fail-closed checker diagnostics, not
 uncaught parser failures. Human output uses `effect/invalid`; `check --json`

@@ -1977,6 +1977,31 @@ export function lowerInvariantProgram(
   program?: ts.Program,
   options: InvariantLoweringOptions = {},
 ): InvariantObligation[] {
+  return lowerInvariantProgramCollecting(fileName, text, program, options, undefined);
+}
+
+/**
+ * Lower every contracted function independently. A function outside the supported fragment is returned as a
+ * located rejection instead of aborting the file, so the other functions' contracts are still checked.
+ */
+export function lowerInvariantProgramPerFunction(
+  fileName: string,
+  text: string,
+  program?: ts.Program,
+  options: InvariantLoweringOptions = {},
+): { obligations: InvariantObligation[]; rejections: InvariantLoweringError[] } {
+  const rejections: InvariantLoweringError[] = [];
+  const obligations = lowerInvariantProgramCollecting(fileName, text, program, options, rejections);
+  return { obligations, rejections };
+}
+
+function lowerInvariantProgramCollecting(
+  fileName: string,
+  text: string,
+  program: ts.Program | undefined,
+  options: InvariantLoweringOptions,
+  rejections: InvariantLoweringError[] | undefined,
+): InvariantObligation[] {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const checkerFacts = typeCheckerParameterFacts(program, fileName, text);
   const booleanLogicalOperations = typeCheckerBooleanLogicalOperations(program, fileName, text);
@@ -2075,7 +2100,7 @@ export function lowerInvariantProgram(
     };
     visitObjectMethods(statement);
   }
-  for (const node of contractCallables) {
+  const lowerCallable = (node: ContractCallable): void => {
     const commentOwner = callableCommentOwners.get(node) ?? node;
     const comments = source.text.slice(commentOwner.getFullStart(), commentOwner.getStart(source));
     const header = { start: node.getStart(source), end: node.getEnd() };
@@ -2087,7 +2112,7 @@ export function lowerInvariantProgram(
     } catch (cause) {
       throw locatedLowering(cause, node.name.text, header);
     }
-    if (!requires.length && !ensures.length) continue;
+    if (!requires.length && !ensures.length) return;
     const variables: ObligationVariable[] = [];
     const env: Environment = new Map();
     const baseAssumptions = [...requires];
@@ -3616,6 +3641,18 @@ export function lowerInvariantProgram(
       for (const obligation of obligations.slice(functionObligationStart)) obligation.controlFlow.exceptionFlow!.escapes = [...escapes];
     } catch (cause) {
       throw locatedLowering(cause, fn, { start: node.getStart(source), end: node.getEnd() });
+    }
+  };
+  for (const node of contractCallables) {
+    const before = obligations.length;
+    try {
+      lowerCallable(node);
+    } catch (cause) {
+      // A rejection is local to the body that raised it: drop that function's partial obligations and keep
+      // lowering the rest, unless the caller asked for the whole file to be rejected at once.
+      if (!rejections) throw cause;
+      obligations.length = before;
+      rejections.push(locatedLowering(cause, node.name.text, { start: node.getStart(source), end: node.getEnd() }));
     }
   }
   return obligations;
