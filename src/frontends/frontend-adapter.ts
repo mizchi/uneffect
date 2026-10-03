@@ -445,6 +445,8 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         ...(capturedCallbacks?.length ? { capturedCallbacks } : {}),
       };
     }
+    if (contract.symbol.module === "lib.es" && contract.symbol.export === "String#localeCompare"
+      && (call.arguments.length !== 1 || ts.isSpreadElement(call.arguments[0]!))) return undefined;
     if (contract.symbol.module === "lib.es" && contract.symbol.export === "String#split") {
       if (!ts.isPropertyAccessExpression(call.expression) || call.arguments.length !== 1
         || !ts.isStringLiteralLike(call.arguments[0]!)) return undefined;

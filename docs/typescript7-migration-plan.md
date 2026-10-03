@@ -652,6 +652,13 @@ kinds.map(...)` が unknown だった (TS6 側の `isArrayLiteralReceiver` は `
 上書きされる可能性は、`Array` 型の受け手と同じく「標準の member」という仮定に含まれ、各 site は
 assumption ledger に記録される。
 
+**閉じた既知差: 引数 1 つの `String#localeCompare`。** catalog は locales / options が user accessor を
+読みうるという理由でこの member を外していた。引数が 1 つ (spread でない) で受け手が primitive の
+string なら、比較対象の文字列を変換して既定の locale で比べるだけで、locales リストも options object も
+読まない。`split` と同じく、catalog entry の `trustReason` に条件を書き、frontend 側が条件を強制する
+(Corsa は構文の引数個数、TS6 は `frontend-adapter` の `arguments.length`)。locale 付き・options 付き・
+spread・boxed `String` の受け手は従来通り unknown。
+
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →
 caller の事前条件を証明 → check 結果に返す**、までを通す。

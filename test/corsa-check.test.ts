@@ -568,6 +568,29 @@ export function plain(value: string): string { return value; }
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("admits localeCompare only in its one-argument form on a primitive string", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-locale-compare-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), `
+        export function byName(a: string, b: string): number { return a.localeCompare(b); }
+        export function sorted(names: string[]): string[] { return names.slice().sort((a, b) => a.localeCompare(b)); }
+        export function withLocale(a: string, b: string): number { return a.localeCompare(b, "en"); }
+        export function withOptions(a: string, b: string, options: Intl.CollatorOptions): number { return a.localeCompare(b, undefined, options); }
+        export function spread(a: string, rest: [string]): number { return a.localeCompare(...rest); }
+        export function boxed(a: String, b: string): number { return a.localeCompare(b); }
+      `);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", lib: ["ES2024"], types: [] }, files: ["index.ts"] }));
+      const checked = await checkCorsaProject({ configFile: temporaryConfig });
+      const evidence = Object.fromEntries(checked.summaries.map((item) => [item.functionName, item.evidence]));
+      // With one argument the comparison converts a string and reads no locales list or options object.
+      expect(evidence.byName).toBe("inferred");
+      expect(evidence.sorted).not.toBe("unknown");
+      // A locale, an options object, a spread that may supply them, and a boxed receiver are not that form.
+      for (const name of ["withLocale", "withOptions", "spread", "boxed"]) expect([name, evidence[name]]).toEqual([name, "unknown"]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("applies the Array contract through a const binding to an array literal", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-array-binding-"));
     try {

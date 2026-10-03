@@ -811,7 +811,8 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     // effect and without reaching user code, for every argument a checked program can pass. Their receiver is a
     // primitive string or the standard constructor object, so no override or subclass can intercept them.
     // `split` is admitted below only for one literal string separator; other splitters can define Symbol.split.
-    // `localeCompare` is deliberately absent because locale lists may read through user accessors.
+    // `localeCompare` is admitted below only with one argument: its locales and options arguments may read through
+    // user accessors.
     // Members whose receiver is an instance interface a user class can extend are handled separately, below,
     // because their claim rests on an assumption the ledger has to carry. `RegExp` matching updates
     // `lastIndex` and is absent as an observable write.
@@ -825,6 +826,12 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       trustReason: `ECMAScript ${owner}.${name} completes without a user-observable side effect and reaches no user code for the arguments a checked program can pass`,
       trustOwner: "@mizchi/uneffect",
     }))),
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: "String#localeCompare" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [] },
+      trustReason: "With a primitive string receiver and exactly one argument, ECMAScript String.localeCompare converts a string and compares with the default locale, reading no locales list or options object; frontends must enforce the arity",
+      trustOwner: "@mizchi/uneffect",
+    }),
     reviewed("javascript", {
       symbol: { module: "lib.es", export: "String#split" },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },

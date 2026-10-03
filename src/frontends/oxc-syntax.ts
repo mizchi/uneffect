@@ -277,6 +277,11 @@ function callSite(node: EstreeNode): SyntaxSite | undefined {
   };
 }
 
+function hasSingleArgument(node: EstreeNode): boolean {
+  const arguments_ = Array.isArray(node.arguments) ? node.arguments : [];
+  return arguments_.length === 1 && isNode(arguments_[0]) && arguments_[0].type !== "SpreadElement";
+}
+
 function hasSingleStringLiteralArgument(node: EstreeNode): boolean {
   const arguments_ = Array.isArray(node.arguments) ? node.arguments : [];
   if (arguments_.length !== 1 || !isNode(arguments_[0])) return false;
@@ -302,6 +307,8 @@ function isCallTarget(node: EstreeNode, parents: ReadonlyMap<EstreeNode, EstreeN
 export function collectSyntaxFactsWithInternal(fileName: string, sourceText: string): {
   syntax: SyntaxFacts;
   singleStringLiteralCallStarts: ReadonlySet<number>;
+  /** Calls passing exactly one argument, none of it spread. */
+  singleArgumentCallStarts: ReadonlySet<number>;
   /** Boundaries for members with computed names, each paired with the v1 exclusion it stands in for. */
   computedMemberFunctions: ReadonlyArray<{ function: SyntaxFunction; exclusion: { start: number; end: number } }>;
   /** Tagged templates read as the call of their tag, each paired with the v1 exclusion it stands in for. */
@@ -312,6 +319,7 @@ export function collectSyntaxFactsWithInternal(fileName: string, sourceText: str
   const parsed = parseSync(fileName, sourceText, { lang });
   const functions: SyntaxFunction[] = [], sites: SyntaxSite[] = [];
   const singleStringLiteralCallStarts = new Set<number>();
+  const singleArgumentCallStarts = new Set<number>();
   const parents = new Map<EstreeNode, EstreeNode>();
   const computedMemberFunctions: Array<{ function: SyntaxFunction; exclusion: { start: number; end: number } }> = [];
   const taggedTemplateSites: Array<{ site: SyntaxSite; exclusion: { start: number; end: number } }> = [];
@@ -344,6 +352,7 @@ export function collectSyntaxFactsWithInternal(fileName: string, sourceText: str
         if (site) {
           sites.push(site);
           if (site.kind === "call" && hasSingleStringLiteralArgument(node)) singleStringLiteralCallStarts.add(site.start);
+          if (site.kind === "call" && hasSingleArgument(node)) singleArgumentCallStarts.add(site.start);
         }
         else if (typeof node.start === "number" && typeof node.end === "number") {
           exclusions.get(node.type === "NewExpression" ? "construct-sites" : "call-sites")!.push({
@@ -422,7 +431,7 @@ export function collectSyntaxFactsWithInternal(fileName: string, sourceText: str
     functions,
     sites,
     errors,
-  }, singleStringLiteralCallStarts, computedMemberFunctions, taggedTemplateSites };
+  }, singleStringLiteralCallStarts, singleArgumentCallStarts, computedMemberFunctions, taggedTemplateSites };
 }
 
 /** Parse TypeScript with Oxc into the versioned, compiler-neutral syntax observation contract. */

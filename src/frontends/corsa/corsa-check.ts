@@ -367,12 +367,11 @@ function resolveEcmaScriptContract(
   members: Map<string, BuiltinContract>,
   globals: Map<string, BuiltinContract>,
   arrayLiteralReceivers: ReadonlySet<number>,
-  singleStringLiteralCallStarts: ReadonlySet<number>,
+  arity: { readonly singleStringLiteral: ReadonlySet<number>; readonly singleArgument: ReadonlySet<number> },
 ): BuiltinContract | undefined {
   // The literal's own members are the ones the catalog registers, so this needs no type at the receiver —
-  // which an `as const` literal does not carry an owner symbol for anyway. This narrows on the literal
-  // written at the site only: unlike the TypeScript path, this one has no cross-file symbol resolution to
-  // follow a `const` binding back to its initializer with, so a named literal stays unknown here.
+  // which an `as const` literal does not carry an owner symbol for anyway. A same-file `const` initialized by
+  // such a literal is included by symbol; one imported from another file is not followed.
   if (arrayLiteralReceivers.has(site.calleePosition)) return members.get(`Array#${site.name}`);
   // The receiver's type is read from its own RANGE by the caller, not from a position: a position query
   // resolves the innermost token, which for a computed member is the key rather than the receiver.
@@ -383,7 +382,11 @@ function resolveEcmaScriptContract(
   const ownerName = declaredByEcmaScriptLibrary(owner) ? owner!.name : primitiveOwnerName(receiverType);
   if (ownerName === undefined) return undefined;
   if (ownerName === "String" && site.name === "split"
-    && (!singleStringLiteralCallStarts.has(site.start) || primitiveOwnerName(receiverType) !== "String")) return undefined;
+    && (!arity.singleStringLiteral.has(site.start) || primitiveOwnerName(receiverType) !== "String")) return undefined;
+  // Locales and options are read through whatever accessors the caller's objects define, so only the
+  // one-argument form is the reviewed one.
+  if (ownerName === "String" && site.name === "localeCompare"
+    && (!arity.singleArgument.has(site.start) || primitiveOwnerName(receiverType) !== "String")) return undefined;
   return members.get(`${ownerName}#${member!.name}`) ?? globals.get(`${ownerName}.${member!.name}`);
 }
 
@@ -529,7 +532,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       sources.set(fileName, sourceText);
       const queries = memoizeQueries(frontend, fileName);
       const collected = collectSyntaxFactsWithInternal(fileName, sourceText);
-      const { singleStringLiteralCallStarts } = collected;
+      const arity = { singleStringLiteral: collected.singleStringLiteralCallStarts, singleArgument: collected.singleArgumentCallStarts };
       // A member whose name is computed is a boundary of its own here; the published inventory still excludes it.
       const computedMemberExclusions = new Set(collected.computedMemberFunctions.map((item) => `${item.exclusion.start}:${item.exclusion.end}`));
       const taggedTemplateExclusions = new Set(collected.taggedTemplateSites.map((item) => `${item.exclusion.start}:${item.exclusion.end}`));
@@ -1059,7 +1062,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           ?? (site.receiverPosition === undefined
             ? standardGlobalContract(site)
             : resolveDomContract(queries, receiverTypeAt(site), site, domMethods, domGraph)
-              ?? resolveEcmaScriptContract(queries, receiverTypeAt(site), site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers, singleStringLiteralCallStarts));
+              ?? resolveEcmaScriptContract(queries, receiverTypeAt(site), site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers, arity));
         if (contract) record(site, contract);
         else if (!recordClassCall(site)) recordUnclassified(site);
       }
@@ -1073,7 +1076,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           else if (!recordClassCall(site)) recordUnclassified(site);
         } else if (site.kind === "property") {
           const contract = resolveDomContract(queries, receiverTypeAt(site), site, domMethods, domGraph)
-            ?? resolveEcmaScriptContract(queries, receiverTypeAt(site), site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers, singleStringLiteralCallStarts);
+            ?? resolveEcmaScriptContract(queries, receiverTypeAt(site), site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers, arity);
           if (contract) record(site, contract);
           // A member the DOM library declares carries host semantics this check did not model, and an accessor
           // runs a body this path does not analyze; both are unknown, not proofs of effect freedom. A member the
