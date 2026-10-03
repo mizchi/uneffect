@@ -588,6 +588,18 @@ default 値・rest・computed key は束縛を export 以外のものにする�
 src/ には `await import(` が 19 箇所あるが、どの境界にも別の未解決要因があり evidence の変化は 0、
 理由の変化が 5。
 
+**閉じた既知差: 名前が computed な member。** `[key()]() {}`、`[Symbol.iterator]()`、
+`{ [k]() {} }` は構文側で `computed-function-name` として除外され、それを定義する module (または
+class を囲む境界) が一律 unknown になっていた。key の式そのものは既に site として読まれていて、
+`key()` の効果も計上されていた。公開済みの syntax facts v1 はこの除外を固定しているので v1 の出力は
+変えず、check が使う内部の収集だけがその member の境界を返し、check はそれが置き換える除外を
+飛ばす。境界は**関数だけ**を覆い key を含めない。名前付きの class method の境界は
+`MethodDefinition` 全体だが、key は member が走るときではなく class / object literal の定義時に
+評価されるので、同じ範囲にすると key の効果が member に吸われて定義側から消える (偽の証明)。
+名前は書かれた key を角括弧で表示する (`Box.[Symbol.iterator]`)。呼出側からこの member への結合は
+作らない: computed な名前への呼出は computed な呼出で、従来通り unknown。object literal の
+computed accessor は名前付きのものと同じ理由で除外のまま。
+
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →
 caller の事前条件を証明 → check 結果に返す**、までを通す。

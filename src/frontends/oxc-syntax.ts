@@ -97,10 +97,26 @@ function classOwner(method: EstreeNode, parents: Map<EstreeNode, EstreeNode>): s
   return parent?.type === "VariableDeclarator" ? identifierName(isNode(parent.id) ? parent.id : undefined) : undefined;
 }
 
+/**
+ * The boundary of a member whose name is computed, for the check's own use: the published v1 inventory keeps
+ * reporting it as an exclusion. It spans the function alone and never the key, because the key is evaluated
+ * when the class or object literal is defined, not when the member runs. The name shows the key as written.
+ */
+function computedMemberFunction(
+  node: EstreeNode, member: EstreeNode, sourceText: string, owner: string | undefined, kind: SyntaxFunctionKind,
+): SyntaxFunction | undefined {
+  const key = isNode(member.key) ? member.key : undefined;
+  if (!key || typeof key.start !== "number" || typeof key.end !== "number" || typeof node.start !== "number" || typeof node.end !== "number") return undefined;
+  const written = sourceText.slice(key.start, key.end).replace(/\s+/gu, " ").trim();
+  const label = `[${written.length > 40 ? `${written.slice(0, 37)}...` : written}]`;
+  return { name: owner ? `${owner}.${label}` : label, kind, start: node.start, end: node.end, parameters: functionParameters(node) };
+}
+
 function functionFact(
   node: EstreeNode,
   parents: Map<EstreeNode, EstreeNode>,
-): { fact?: SyntaxFunction; exclusion?: SyntaxFactExclusion } {
+  sourceText: string,
+): { fact?: SyntaxFunction; exclusion?: SyntaxFactExclusion; computed?: SyntaxFunction } {
   if (typeof node.start !== "number" || typeof node.end !== "number") return {};
   if (node.type === "FunctionDeclaration") {
     const name = identifierName(isNode(node.id) ? node.id : undefined) ?? "<anonymous>";
@@ -126,9 +142,12 @@ function functionFact(
     const methodEnd = typeof parent.end === "number" ? parent.end : node.end;
     // A constructor is a named class member boundary; the published v1 kind inventory has no separate member.
     const key = parent.kind === "constructor" ? "constructor" : staticName(isNode(parent.key) ? parent.key : undefined, parent.computed === true);
-    if (!key) return { exclusion: { reason: "computed-function-name", span: { start: methodStart, end: methodEnd } } };
     const owner = classOwner(parent, parents);
     const kind: SyntaxFunctionKind = parent.kind === "get" ? "getter" : parent.kind === "set" ? "setter" : "method";
+    if (!key) return {
+      exclusion: { reason: "computed-function-name", span: { start: methodStart, end: methodEnd } },
+      computed: computedMemberFunction(node, parent, sourceText, owner, kind),
+    };
     return { fact: {
       name: owner ? `${owner}.${key}` : key,
       kind,
@@ -139,7 +158,13 @@ function functionFact(
   }
   if (parent?.type === "Property") {
     const key = staticName(isNode(parent.key) ? parent.key : undefined, parent.computed === true);
-    if (!key) return { exclusion: { reason: "computed-function-name", span: { start: node.start, end: node.end } } };
+    if (!key) {
+      const exclusion = { reason: "computed-function-name" as const, span: { start: node.start, end: node.end } };
+      // An accessor stays excluded for the same reason a named one is, below.
+      if (parent.kind === "get" || parent.kind === "set") return { exclusion };
+      const kind: SyntaxFunctionKind = parent.method === true ? "method" : node.type === "ArrowFunctionExpression" ? "arrow" : "function-expression";
+      return { exclusion, computed: computedMemberFunction(node, parent, sourceText, undefined, kind) };
+    }
     // Accessor reads/writes need effect composition before their exclusion can be removed.
     if (parent.kind === "get" || parent.kind === "set") return {
       exclusion: { reason: "object-member-function", span: { start: node.start, end: node.end } },
@@ -277,6 +302,8 @@ function isCallTarget(node: EstreeNode, parents: ReadonlyMap<EstreeNode, EstreeN
 export function collectSyntaxFactsWithInternal(fileName: string, sourceText: string): {
   syntax: SyntaxFacts;
   singleStringLiteralCallStarts: ReadonlySet<number>;
+  /** Boundaries for members with computed names, each paired with the v1 exclusion it stands in for. */
+  computedMemberFunctions: ReadonlyArray<{ function: SyntaxFunction; exclusion: { start: number; end: number } }>;
 } {
   const lang = oxcLanguage(fileName);
   const language = lang === "tsx" ? "tsx" as const : "typescript" as const;
@@ -284,6 +311,7 @@ export function collectSyntaxFactsWithInternal(fileName: string, sourceText: str
   const functions: SyntaxFunction[] = [], sites: SyntaxSite[] = [];
   const singleStringLiteralCallStarts = new Set<number>();
   const parents = new Map<EstreeNode, EstreeNode>();
+  const computedMemberFunctions: Array<{ function: SyntaxFunction; exclusion: { start: number; end: number } }> = [];
   const exclusions = new Map<SyntaxFactsCoverageDomain, SyntaxFactExclusion[]>([
     ["function-boundaries", []], ["call-sites", []], ["construct-sites", []], ["property-sites", []],
   ]);
@@ -294,9 +322,10 @@ export function collectSyntaxFactsWithInternal(fileName: string, sourceText: str
     }
   });
   walk(parsed.program, (node) => {
-    const boundary = functionFact(node, parents);
+    const boundary = functionFact(node, parents, sourceText);
     if (boundary.fact) functions.push(boundary.fact);
     if (boundary.exclusion) exclusions.get("function-boundaries")!.push(boundary.exclusion);
+    if (boundary.exclusion && boundary.computed) computedMemberFunctions.push({ function: boundary.computed, exclusion: boundary.exclusion.span });
     if (node.type === "CallExpression" || node.type === "NewExpression") {
       const callee = isNode(node.callee) ? node.callee : undefined;
       const unwrapped = callee?.type === "TSNonNullExpression" && isNode(callee.expression) ? callee.expression : callee;
@@ -386,7 +415,7 @@ export function collectSyntaxFactsWithInternal(fileName: string, sourceText: str
     functions,
     sites,
     errors,
-  }, singleStringLiteralCallStarts };
+  }, singleStringLiteralCallStarts, computedMemberFunctions };
 }
 
 /** Parse TypeScript with Oxc into the versioned, compiler-neutral syntax observation contract. */

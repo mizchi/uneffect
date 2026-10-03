@@ -525,7 +525,15 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       const sourceText = readFileSync(fileName, "utf8");
       sources.set(fileName, sourceText);
       const queries = memoizeQueries(frontend, fileName);
-      const { syntax, singleStringLiteralCallStarts } = collectSyntaxFactsWithInternal(fileName, sourceText);
+      const collected = collectSyntaxFactsWithInternal(fileName, sourceText);
+      const { singleStringLiteralCallStarts } = collected;
+      // A member whose name is computed is a boundary of its own here; the published inventory still excludes it.
+      const computedMemberExclusions = new Set(collected.computedMemberFunctions.map((item) => `${item.exclusion.start}:${item.exclusion.end}`));
+      const syntax = collected.computedMemberFunctions.length === 0 ? collected.syntax : {
+        ...collected.syntax,
+        functions: [...collected.syntax.functions, ...collected.computedMemberFunctions.map((item) => item.function)]
+          .sort((left, right) => left.start - right.start),
+      };
       const bindings = collectCorsaEffectBindings(frontend, fileName, sourceText);
       for (const binding of bindings.declarations) {
         const key = `${fileName}:${binding.start}:${binding.name}`;
@@ -627,6 +635,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       const dynamicImports: Array<{ start: number; specifier: string; target: string }> = [];
       for (const entry of syntax.coverage) for (const exclusion of entry.exclusions) {
         const spanKey = `${exclusion.span.start}:${exclusion.span.end}`;
+        if (exclusion.reason === "computed-function-name" && computedMemberExclusions.has(spanKey)) continue;
         // A dynamic key on a checker-resolved non-DOM receiver is an ordinary read/write, not missing coverage.
         if (exclusion.reason === "computed-property" && indexAccess.admittedComputedProperties.has(spanKey)) continue;
         // Calling a dynamic member of such a receiver is a call to an unknown callee, recorded below as unknown evidence.

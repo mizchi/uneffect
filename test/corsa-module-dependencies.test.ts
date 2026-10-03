@@ -184,3 +184,28 @@ export async function computed(path: string) { const leaf = await import(path); 
     }, ["main.ts"]);
   });
 });
+
+describe("a member whose name is computed", () => {
+  it("charges the key to the definition and the body to its own boundary", async () => {
+    await project({
+      "main.ts": `function key(): string { console.log("key"); return "k"; }
+export class Box {
+  [key()]() { return 1; }
+  static [Symbol.hasInstance](_: unknown) { console.log("instance"); return false; }
+  get [Symbol.toStringTag]() { return "Box"; }
+}
+export const table = { [key()]() { return 2; } };
+`,
+    }, (result, directory) => {
+      const row = (name: string) => result.summaries.find((item) => item.functionName === name);
+      // The key runs when the class and the object literal are defined, so it is the module's.
+      expect(modules(result, directory)["main.ts"]).toEqual({ effects: ["Console"], evidence: "trusted", reasons: [] });
+      // Each body is a boundary of its own and runs only when it is called.
+      expect([row("Box.[key()]")?.effects, row("Box.[key()]")?.evidence]).toEqual([[], "inferred"]);
+      expect(row("Box.[Symbol.hasInstance]")?.effects.map(formatEffect)).toEqual(["Console"]);
+      expect(row("Box.[Symbol.toStringTag]")?.evidence).toBe("inferred");
+      expect(row("[key()]")?.evidence).toBe("inferred");
+      expect(result.diagnostics.filter((item) => item.message.includes("computed-function-name"))).toEqual([]);
+    });
+  });
+});
