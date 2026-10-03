@@ -1182,6 +1182,12 @@ export function analyzeCorsaSourceFacts(
    * path cannot read, and a shorthand property of the same name (which names the property's symbol, not the
    * binding's), refuse the binding instead of being skipped.
    */
+  const finallyFollows = (node: EstreeNode, boundary: EstreeNode): boolean => {
+    for (let child = node, parent = parents.get(node); parent !== undefined && child !== boundary; child = parent, parent = parents.get(parent)) {
+      if (parent.type === "TryStatement" && isNode(parent.finalizer) && parent.finalizer !== child) return true;
+    }
+    return false;
+  };
   const privateAllocationBinding = (declarator: EstreeNode): Extract<AllocatedReceiver, { kind: "binding" }> | undefined => {
     const declaration = parents.get(declarator);
     const id = declarator.id as EstreeNode;
@@ -1189,7 +1195,7 @@ export function analyzeCorsaSourceFacts(
       || typeof id.start !== "number" || typeof id.name !== "string") return undefined;
     const init = unwrap(declarator.init as EstreeNode);
     const initializer = init.type === "ArrayExpression" || init.type === "ObjectExpression" ? { kind: "literal" as const }
-      : init.type === "CallExpression" && typeof init.start === "number" && typeof init.end === "number"
+      : (init.type === "CallExpression" || init.type === "NewExpression") && typeof init.start === "number" && typeof init.end === "number"
         ? { kind: "call-result" as const, call: `${init.start}:${init.end}` } : undefined;
     const boundary = enclosingBoundary(declarator);
     if (!initializer || !boundary) return undefined;
@@ -1210,6 +1216,9 @@ export function analyzeCorsaSourceFacts(
       if (symbol !== own) continue;
       if (enclosingBoundary(reference) !== boundary) return undefined;
       const { node: receiver, parent: member } = usedAs(reference);
+      // Returning the allocation hands it out and ends the call, so every write before it was private. A
+      // `finally` between the return and the boundary still runs afterwards, while the caller can hold it.
+      if (member?.type === "ReturnStatement" && member.argument === receiver && !finallyFollows(member, boundary)) continue;
       if (member?.type !== "MemberExpression" || member.computed === true || member.object !== receiver) return undefined;
       const outer = parents.get(member);
       if (outer?.type === "CallExpression" && outer.callee === member) {

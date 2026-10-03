@@ -537,6 +537,13 @@ escape 解析、オブジェクト同一性 vs 宣言同一性、メンバチェ
   shorthand property (binding ではなく property の symbol を指す) は、どれも束縛を拒否する。
   実測: src/ では既存 summary のうち 1 件が `unknown` → `trusted`、6 件が理由を 1 つ失い、後退は 0。
   所要時間は変わらない (src/ 全体で 37 s → 36 s)。
+
+  後から **return だけは許す**ようにした (`const out = []; out.push(x); return out;`)。return は値を渡すと
+  同時に呼出を終えるので、それより前の書き込みは誰からも見えない。同じ呼出の中で return の後に走りうる
+  のは `finally` だけなので、return から boundary までの間に (`finally` 節自身の中でない) `try ... finally`
+  があれば拒否する。初期化子には `new Map()` / `new Set()` のような構築も加えた (fresh かどうかは
+  呼出と同じく構築の contract が決める)。return 以外の使い方 (引数、別名、`[out]`、`yield`、`throw`) は
+  従来通り拒否する。
 - **argument 書き換えと freshness** は上に記した通り未解決。
 - **`RegExp#test` / `exec` の holdback は理由を書き直した。** catalog がこの 2 member を外していた理由は
   「native summary が `mutate` を描画できないので、admit すると正直な unresolved が無音の空 effect になる」

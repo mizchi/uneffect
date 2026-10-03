@@ -204,4 +204,26 @@ export function heldByCaller(values: string[]): string | undefined { const parts
       expect(closure?.evidence).toBe("unknown");
     });
   });
+
+  it("leaves a write alone when the allocation leaves only by being returned", async () => {
+    await check(`export const sink: string[][] = [];
+export function collect(source: string[]): string[] { const out: string[] = []; for (const item of source) out.push(item); return out; }
+export function index(keys: string[]): Map<string, number> { const map = new Map<string, number>(); map.set("a", 1); return map; }
+export function unique(keys: string[]): Set<string> { const seen = new Set<string>(); seen.add("a"); return seen; }
+export function returnedEarly(flag: boolean): string[] { const out: string[] = []; if (flag) return out; out.push("x"); return out; }
+export function afterFinally(): string[] { const out: string[] = []; try { return out; } finally { out.push("late"); } }
+export function publishedFirst(): string[] { const out: string[] = []; sink.push(out); out.push("x"); return out; }
+export function yielded(): string[] { const out: string[] = []; const view = [out]; out.push("x"); return view[0] ?? []; }
+`, (result) => {
+      // Nothing outside the boundary can hold the allocation until it is returned, and the return ends the call.
+      for (const name of ["collect", "index", "unique", "returnedEarly"]) {
+        expect([name, row(result, name)?.evidence]).toEqual([name, "inferred"]);
+      }
+      // A finally block runs after the return hands the value out, and any other use can publish it first.
+      for (const name of ["afterFinally", "publishedFirst", "yielded"]) {
+        expect([name, row(result, name)?.evidence]).toEqual([name, "unknown"]);
+        expect(reasonText(result, name)).toContain("the value push writes through");
+      }
+    });
+  });
 });
