@@ -630,6 +630,12 @@ unknown になり、`loud` 自身の効果も落ちていた。callback 位置�
 合成する。書き換えられる束縛・引数・解決できない識別子は従来通り unknown。合成する値が自分の引数を
 呼ぶ (呼出義務を持つ) 場合は、inline 関数と同じく合成できず unknown のまま。
 
+**閉じた既知差: 無名の default export。** `export default () => {}` と `export default function () {}` は
+名前を束縛しないので本体の宣言として集められず、default import 経由の呼出が unknown だった。
+`default` キーワード位置の symbol (import 側の別名を解いた先と同じ id) を、その関数の境界
+(`<anonymous>`) の宣言として登録する。default export の束縛は export 自身が一度だけ書き、どのコードも
+書き換えられない。async と generator は名前付きの宣言と同じ理由で対象外。
+
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →
 caller の事前条件を証明 → check 結果に返す**、までを通す。

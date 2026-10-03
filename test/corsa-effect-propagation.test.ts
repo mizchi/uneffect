@@ -113,6 +113,24 @@ describe("native direct-call effect propagation", () => {
     for (const name of ["a", "b"]) expect(result.summaries.find(item => item.functionName === name)?.evidence).toBe("inferred");
   });
 
+  it("links an anonymous default export to its body", async () => {
+    const result = await check({
+      "arrow.ts": `export default () => { console.log("arrow"); };`,
+      "declared.ts": `export default function () { return 1; }`,
+      "expression.ts": `export default function* () { console.log("deferred"); }`,
+      "main.ts": `import arrow from "./arrow.js"; import declared from "./declared.js"; import generator from "./expression.js";
+        export function viaArrow() { arrow(); }
+        export function viaDeclared() { return declared(); }
+        export function viaGenerator() { generator(); }`,
+    });
+    const evidence = (name: string) => result.summaries.find(item => item.functionName === name)?.evidence;
+    // The default export binding of an anonymous function is written once, by the export itself.
+    expect([names(result, "viaArrow"), evidence("viaArrow")]).toEqual([["Console"], "trusted"]);
+    expect([names(result, "viaDeclared"), evidence("viaDeclared")]).toEqual([[], "inferred"]);
+    // A generator body runs on the first `next()`, not at the call, so it stays outside the direct-call model.
+    expect(evidence("viaGenerator")).toBe("unknown");
+  });
+
   it("follows a const alias to the body of a binding nothing reassigns", async () => {
     const result = await check({
       "leaf.ts": `export function report() { console.log("leaf"); }`,

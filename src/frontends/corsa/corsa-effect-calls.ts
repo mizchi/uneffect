@@ -158,6 +158,20 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
     if (symbol?.declarations?.length === 1) declarations.push({ symbolId: symbol.id, start: bodyStart, name: id.name });
   };
   const collectDeclarations = (node: Node): void => {
+    // `export default () => {}` and `export default function () {}` bind no name of their own; the `default` export
+    // is the binding, and nothing can write it. The function boundary carries the anonymous name.
+    if (node.type === "ExportDefaultDeclaration") {
+      const value = node.declaration;
+      const anonymous = value.type === "ArrowFunctionExpression"
+        || (value.type === "FunctionExpression" || value.type === "FunctionDeclaration") && !value.id;
+      const keyword = /^export(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\n]*\n)*default\b/u.exec(text.slice(node.start));
+      if (anonymous && "body" in value && value.body && !value.async && !value.generator && keyword) {
+        const symbol = frontend.getSymbolAtPosition(file, node.start + keyword[0].length - "default".length);
+        if (symbol?.name === "default" && symbol.declarations?.length === 1) {
+          declarations.push({ symbolId: symbol.id, start: value.start, name: "<anonymous>" });
+        }
+      }
+    }
     if (node.type === "FunctionDeclaration" && node.id && node.body && !node.async && !node.generator) {
       declare(node.id, node.start);
     }
