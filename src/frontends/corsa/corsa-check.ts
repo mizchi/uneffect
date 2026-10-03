@@ -529,6 +529,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       const { singleStringLiteralCallStarts } = collected;
       // A member whose name is computed is a boundary of its own here; the published inventory still excludes it.
       const computedMemberExclusions = new Set(collected.computedMemberFunctions.map((item) => `${item.exclusion.start}:${item.exclusion.end}`));
+      const taggedTemplateExclusions = new Set(collected.taggedTemplateSites.map((item) => `${item.exclusion.start}:${item.exclusion.end}`));
       const syntax = collected.computedMemberFunctions.length === 0 ? collected.syntax : {
         ...collected.syntax,
         functions: [...collected.syntax.functions, ...collected.computedMemberFunctions.map((item) => item.function)]
@@ -636,6 +637,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       for (const entry of syntax.coverage) for (const exclusion of entry.exclusions) {
         const spanKey = `${exclusion.span.start}:${exclusion.span.end}`;
         if (exclusion.reason === "computed-function-name" && computedMemberExclusions.has(spanKey)) continue;
+        // A tagged template whose tag is a callee site is recorded as that call below.
+        if (exclusion.reason === "tagged-template" && taggedTemplateExclusions.has(spanKey)) continue;
         // A dynamic key on a checker-resolved non-DOM receiver is an ordinary read/write, not missing coverage.
         if (exclusion.reason === "computed-property" && indexAccess.admittedComputedProperties.has(spanKey)) continue;
         // Calling a dynamic member of such a receiver is a call to an unknown callee, recorded below as unknown evidence.
@@ -949,14 +952,22 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
        * The receiver has to be the bare identifier, and the import has to resolve to a source-file module: a
        * TypeScript `namespace` is also a value module, but its members are writable properties of an object.
        */
-      const throughModuleNamespace = (site: SyntaxSite): boolean => {
-        if (indexAccess.importNamespaceReceivers.has(`${site.start}:${site.end}`)) return true;
-        const position = indexAccess.identifierReceivers.get(`${site.start}:${site.end}`);
-        const binding = position === undefined ? null : queries.getSymbolAtPosition(fileName, position);
+      const namesModuleNamespace = (position: number): boolean => {
+        const binding = queries.getSymbolAtPosition(fileName, position);
         if (!binding || typeof binding.flags !== "number" || (binding.flags & aliasSymbolFlag) === 0) return false;
         const module = frontend.getAliasedSymbol(binding);
         return module !== null && typeof module.flags === "number" && (module.flags & valueModuleSymbolFlag) !== 0
           && module.name.startsWith("\"");
+      };
+      const throughModuleNamespace = (site: SyntaxSite): boolean => {
+        const span = `${site.start}:${site.end}`;
+        if (indexAccess.importNamespaceReceivers.has(span)) return true;
+        const position = indexAccess.identifierReceivers.get(span);
+        if (position !== undefined) return namesModuleNamespace(position);
+        // A namespace's property is a binding of the module it names, so `ns.inner` is itself a namespace object
+        // exactly when `inner` re-exports one. Any other step is an ordinary, writable object.
+        const chain = indexAccess.memberChainReceivers.get(span);
+        return chain !== undefined && chain.every(namesModuleNamespace);
       };
       const recordUnclassified = (site: SyntaxSite): void => {
         const owner = owningBoundary(site.start);
@@ -1045,6 +1056,9 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         if (contract) record(site, contract);
         else if (!recordClassCall(site)) recordUnclassified(site);
       }
+      // A tag is linked only through its declaration. No reviewed contract is consulted: every contract is
+      // written for the arguments of an ordinary call, and a tag receives a strings array in their place.
+      for (const { site } of collected.taggedTemplateSites) recordUnclassified(site);
       for (const site of sites) {
         if (site.kind === "construct") {
           const contract = resolveConstructContract(queries, fileName, site, globals) ?? standardGlobalContract(site);

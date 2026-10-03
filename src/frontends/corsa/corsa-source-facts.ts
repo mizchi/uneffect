@@ -140,6 +140,12 @@ export interface CorsaSourceFacts {
    */
   readonly identifierReceivers: ReadonlyMap<string, number>;
   /**
+   * Per member call whose receiver is a chain of static member reads rooted at an identifier (`ns.inner` in
+   * `ns.inner.report()`), the offset of every token in it, root first. The checker accepts the chain only when
+   * every token names a module namespace, whose properties no code can rewrite.
+   */
+  readonly memberChainReceivers: ReadonlyMap<string, readonly number[]>;
+  /**
    * `${start}:${end}` of an `import()` whose specifier is one string literal and that carries no options, to that
    * specifier and its offset, which is where the checker resolves the module it names.
    */
@@ -294,6 +300,15 @@ function unwrap(node: EstreeNode): EstreeNode {
     current = current.expression;
   }
   return current;
+}
+
+/** Every token of `a.b.c`, root first, or `undefined` when any step is computed, private, or not a plain read. */
+function staticMemberChain(node: EstreeNode): number[] | undefined {
+  if (node.type === "Identifier") return typeof node.start === "number" ? [node.start] : undefined;
+  if (node.type !== "MemberExpression" || node.computed === true || !isNode(node.object) || !isNode(node.property)
+    || node.property.type !== "Identifier" || typeof node.property.start !== "number") return undefined;
+  const prefix = staticMemberChain(node.object);
+  return prefix === undefined ? undefined : [...prefix, node.property.start];
 }
 
 /** The shared definition of the receiver's type-bearing token, so admission and contract selection agree. */
@@ -923,6 +938,7 @@ export function analyzeCorsaSourceFacts(
   const freshArguments = new Map<string, readonly boolean[]>();
   const allocatedReceivers = new Map<string, AllocatedReceiver>();
   const identifierReceivers = new Map<string, number>();
+  const memberChainReceivers = new Map<string, number[]>();
   const literalDynamicImports = new Map<string, { specifier: string; position: number }>();
   const importNamespaceReceivers = new Set<string>();
   const destructuredImports = new Map<string, string>();
@@ -1087,6 +1103,9 @@ export function analyzeCorsaSourceFacts(
           allocatedReceivers.set(`${node.start}:${node.end}`, { kind: "call-result", call: `${receiver.start}:${receiver.end}` });
         } else if (receiver.type === "Identifier" && callee.computed !== true && typeof receiver.start === "number") {
           identifierReceivers.set(`${node.start}:${node.end}`, receiver.start);
+        } else if (receiver.type === "MemberExpression" && callee.computed !== true) {
+          const tokens = staticMemberChain(receiver);
+          if (tokens !== undefined) memberChainReceivers.set(`${node.start}:${node.end}`, tokens);
         } else if (callee.computed !== true && awaitedLiteralImport(receiver)) {
           importNamespaceReceivers.add(`${node.start}:${node.end}`);
         }
@@ -1423,7 +1442,7 @@ export function analyzeCorsaSourceFacts(
     });
   }
   return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, observableWrites, receiverTypes, throws, coercions,
-    dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, freshArguments, allocatedReceivers, identifierReceivers, literalDynamicImports, importNamespaceReceivers, destructuredImports, assignedInlineFunctions, diagnostics };
+    dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, freshArguments, allocatedReceivers, identifierReceivers, memberChainReceivers, literalDynamicImports, importNamespaceReceivers, destructuredImports, assignedInlineFunctions, diagnostics };
 }
 
 function findDeclarator(root: EstreeNode, name: string): EstreeNode | undefined {

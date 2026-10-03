@@ -304,6 +304,8 @@ export function collectSyntaxFactsWithInternal(fileName: string, sourceText: str
   singleStringLiteralCallStarts: ReadonlySet<number>;
   /** Boundaries for members with computed names, each paired with the v1 exclusion it stands in for. */
   computedMemberFunctions: ReadonlyArray<{ function: SyntaxFunction; exclusion: { start: number; end: number } }>;
+  /** Tagged templates read as the call of their tag, each paired with the v1 exclusion it stands in for. */
+  taggedTemplateSites: ReadonlyArray<{ site: SyntaxSite; exclusion: { start: number; end: number } }>;
 } {
   const lang = oxcLanguage(fileName);
   const language = lang === "tsx" ? "tsx" as const : "typescript" as const;
@@ -312,6 +314,7 @@ export function collectSyntaxFactsWithInternal(fileName: string, sourceText: str
   const singleStringLiteralCallStarts = new Set<number>();
   const parents = new Map<EstreeNode, EstreeNode>();
   const computedMemberFunctions: Array<{ function: SyntaxFunction; exclusion: { start: number; end: number } }> = [];
+  const taggedTemplateSites: Array<{ site: SyntaxSite; exclusion: { start: number; end: number } }> = [];
   const exclusions = new Map<SyntaxFactsCoverageDomain, SyntaxFactExclusion[]>([
     ["function-boundaries", []], ["call-sites", []], ["construct-sites", []], ["property-sites", []],
   ]);
@@ -352,6 +355,10 @@ export function collectSyntaxFactsWithInternal(fileName: string, sourceText: str
     }
     if (node.type === "TaggedTemplateExpression" && typeof node.start === "number" && typeof node.end === "number") {
       exclusions.get("call-sites")!.push({ reason: "tagged-template", span: { start: node.start, end: node.end } });
+      // `` tag`a${b}` `` calls `tag` with the strings array and the substitutions, so its tag is a callee like any
+      // other. An inline function tag is left excluded: it has no declaration to link.
+      const site = isNode(node.tag) ? callSite({ type: "CallExpression", callee: node.tag, start: node.start, end: node.end }) : undefined;
+      if (site !== undefined && site.name !== "<iife>") taggedTemplateSites.push({ site, exclusion: { start: node.start, end: node.end } });
     }
     if (node.type === "ImportExpression" && typeof node.start === "number" && typeof node.end === "number") {
       exclusions.get("call-sites")!.push({ reason: "dynamic-import", span: { start: node.start, end: node.end } });
@@ -415,7 +422,7 @@ export function collectSyntaxFactsWithInternal(fileName: string, sourceText: str
     functions,
     sites,
     errors,
-  }, singleStringLiteralCallStarts, computedMemberFunctions };
+  }, singleStringLiteralCallStarts, computedMemberFunctions, taggedTemplateSites };
 }
 
 /** Parse TypeScript with Oxc into the versioned, compiler-neutral syntax observation contract. */

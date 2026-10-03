@@ -566,6 +566,10 @@ escape 解析、オブジェクト同一性 vs 宣言同一性、メンバチェ
 member 呼出すべてに合成 id を登録しているので、namespace member が呼出先を名乗ったときはそちらを見ない
 (見ると解決できない合成 id が unresolved として残る)。選択ファイル外の本体は従来通り借りない。
 この repo の src/ にはローカル module の namespace import がほぼ無く、evidence の変化は 0、理由の変化が 4。
+受け手が member の連鎖 (`bridge.inner.report()`) でも、連鎖の**全トークン**が同じ規則で source file の
+module を指す別名 (`export * as inner from` の再 export) なら同じく結合する。namespace object の property
+は書き換えられないので、各段が namespace である限り連鎖全体も namespace object を指す。途中に
+TypeScript の `namespace` や export された普通の object が入ると、その段で unknown に戻る。
 
 **閉じた既知差: 関数の中の dynamic import。** `import()` は構文側で `dynamic-import` として除外され、
 それを含む関数は一律 unknown だった (偽の証明にはならない)。指定子が文字列リテラル 1 つで options を
@@ -599,6 +603,16 @@ class を囲む境界) が一律 unknown になっていた。key の式その�
 名前は書かれた key を角括弧で表示する (`Box.[Symbol.iterator]`)。呼出側からこの member への結合は
 作らない: computed な名前への呼出は computed な呼出で、従来通り unknown。object literal の
 computed accessor は名前付きのものと同じ理由で除外のまま。
+
+**閉じた既知差: tagged template。** `` tag`a${b}` `` は `tagged-template` として除外され、それを含む
+境界が syntax error 付きで一律 unknown になっていた。実際には tag を (strings 配列, ...substitution)
+で呼ぶ呼出なので、v1 の出力は変えずに内部の収集が tag を callee とする call site を返し、check は
+それが置き換える除外を飛ばして、宣言への結合だけで記録する。identifier の tag は解析済みの本体に
+結合され、名前空間 import の member も通常の呼出と同じ規則で結合される。それ以外の member の tag
+(`String.raw`、可変 object の method) と inline 関数の tag は従来通り unknown。reviewed contract は
+引かない: contract は通常の呼出の引数位置について書かれているが、tag は第 1 引数に strings 配列を
+受け取るので位置がずれる。同じ理由で引数の形 (inline 関数の位置) も渡さないため、substitution に
+書いた関数を tag が呼ぶ場合は呼出側が unknown のまま残る。
 
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →

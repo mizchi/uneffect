@@ -290,7 +290,6 @@ describe("dispatch soundness", () => {
       class B { constructor(cb: () => void) { cb(); } }
       export function run(flag: boolean) { return new (flag ? A : B)(() => { fetch("https://example.com"); }); }
     `],
-    ["a template tag", "export function run(tag: (parts: TemplateStringsArray) => void) { tag`x`; }"],
   ])("fails closed on a construct the syntax pass excluded: %s", async (_label, source) => {
     const result = await check({ "main.ts": source });
     // An exclusion is a construct this path never recorded a site for, so the boundary containing it cannot

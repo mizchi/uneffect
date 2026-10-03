@@ -165,6 +165,59 @@ describe("native direct-call effect propagation", () => {
     expect(selected.summaries.find(item => item.functionName === "silent")?.evidence).toBe("unknown");
   });
 
+  it("follows a chain of module namespaces and stops at the first ordinary object", async () => {
+    const result = await check({
+      "leaf.ts": `export function report() { console.log("leaf"); }
+        export namespace Legacy { export function report() { console.log("legacy"); } }`,
+      "bridge.ts": `export * as inner from "./leaf.js"; export const plain = { report() {} };`,
+      "main.ts": `import * as bridge from "./bridge.js";
+        export function chained() { bridge.inner.report(); }
+        export function throughDeclared() { bridge.inner.Legacy.report(); }
+        export function throughObject() { bridge.plain.report(); }`,
+    });
+    const evidence = (name: string) => result.summaries.find(item => item.functionName === name)?.evidence;
+    // A re-exported namespace is the module's namespace object, whose properties are its exports.
+    expect([names(result, "chained"), evidence("chained")]).toEqual([["Console"], "trusted"]);
+    // A TypeScript namespace and an exported object are ordinary objects whose members can be rewritten.
+    for (const name of ["throughDeclared", "throughObject"]) expect([name, evidence(name)]).toEqual([name, "unknown"]);
+  });
+
+  it("follows a tagged template to the tag it calls", async () => {
+    const result = await check({ "main.ts": `
+      function loud(parts: TemplateStringsArray, ...values: unknown[]) { console.log(parts.length); return values.length; }
+      function quiet(parts: TemplateStringsArray) { return parts.length; }
+      declare function external(parts: TemplateStringsArray): string;
+      const table = { tag(parts: TemplateStringsArray) { console.log(parts.length); } };
+      export function a() { return loud\`x\${1}\`; }
+      export function b() { return quiet\`x\`; }
+      export function c() { return external\`x\`; }
+      export function d() { table.tag\`x\`; }
+      export function e() { return String.raw\`x\`; }
+      function run(parts: TemplateStringsArray, task: () => void) { task(); return parts.length; }
+      export function f() { return run\`x\${() => console.log("task")}\`; }
+    ` });
+    const evidence = (name: string) => result.summaries.find(item => item.functionName === name)?.evidence;
+    // A tagged template calls its tag with the strings array and the substitutions, so an identifier tag is
+    // linked to the body it names exactly as a direct call is.
+    expect([names(result, "a"), evidence("a")]).toEqual([["Console"], "trusted"]);
+    expect([names(result, "b"), evidence("b")]).toEqual([[], "inferred"]);
+    // A tag with no analyzed body, or one read off a mutable object, is not.
+    for (const name of ["c", "d", "e"]) expect([name, evidence(name)]).toEqual([name, "unknown"]);
+    // A tag that invokes a substitution is not discharged by a function written there: the substitutions do
+    // not sit at the argument positions an ordinary call would put them in.
+    expect(evidence("f")).toBe("unknown");
+    // A tag the caller supplies is invoked exactly as a call to that parameter is, and the caller that supplies
+    // it owes what it runs.
+    const supplied = await check({ "main.ts": `
+      export function run(tag: (parts: TemplateStringsArray) => void) { tag\`x\`; }
+      export function caller() { run(() => { console.log("x"); }); }
+    ` });
+    expect([names(supplied, "run"), supplied.summaries.find(item => item.functionName === "run")?.evidence]).toEqual([["InvokeUserCode"], "inferred"]);
+    expect(names(supplied, "caller")?.sort()).toEqual(["Console", "InvokeUserCode"]);
+    // The construct is no longer reported as syntax this path could not see.
+    expect(result.diagnostics.filter(item => item.domain === "syntax")).toEqual([]);
+  });
+
   it.each(["deferred();", "eval(code); leaf();"])("keeps async invocation and dynamic scope outside the direct-call model: %s", async invocation => {
     const result = await check({ "main.ts": `
       async function deferred() { console.log("deferred"); }
