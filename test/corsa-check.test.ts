@@ -568,6 +568,37 @@ export function plain(value: string): string { return value; }
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("applies the Array contract through a const binding to an array literal", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-array-binding-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), `
+        const kinds = ["a", "b"] as const;
+        const chosen = Math.random() > 0.5 ? [1] : [2] satisfies readonly number[];
+        const relay = kinds;
+        let mutable: readonly string[] = ["a"];
+        declare const external: readonly string[];
+        const copied = external;
+        export function viaConst(): void { kinds.forEach((kind) => { console.log(kind); }); }
+        export function viaConditional(): void { chosen.forEach((value) => { console.log(value); }); }
+        export function viaRelay(): void { relay.forEach((kind) => { console.log(kind); }); }
+        export function viaLet(): void { mutable.forEach((kind) => { console.log(kind); }); }
+        export function viaCopy(): void { copied.forEach((kind) => { console.log(kind); }); }
+        export function shadowed(kinds: readonly string[]): void { kinds.forEach((kind) => { console.log(kind); }); }
+      `);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", lib: ["ES2024", "DOM"], types: [] }, files: ["index.ts"] }));
+      const checked = await checkCorsaProject({ configFile: temporaryConfig });
+      const evidence = Object.fromEntries(checked.summaries.map((item) => [item.functionName, item.evidence]));
+      const names = capabilityNames(checked);
+      // A const initialized by an array literal holds that genuine Array for its whole lifetime.
+      for (const name of ["viaConst", "viaConditional", "viaRelay"]) {
+        expect([name, evidence[name], names[name]]).toEqual([name, "trusted", ["Console"]]);
+      }
+      // A let, a const bound to a value of structural type, and a parameter that merely shares the name do not.
+      for (const name of ["viaLet", "viaCopy", "shadowed"]) expect([name, evidence[name]]).toEqual([name, "unknown"]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("does not give a referenced builtin the effects of calling it", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-reference-"));
     try {

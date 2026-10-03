@@ -835,6 +835,8 @@ export function analyzeCorsaSourceFacts(
   const parents = new Map<EstreeNode, EstreeNode>();
   const computedMembers: EstreeNode[] = [];
   const arrayLiteralReceivers = new Set<number>();
+  /** Static member reads whose receiver is a bare identifier: the identifier's offset and the member's. */
+  const identifierMemberReads: Array<{ identifier: number; property: number }> = [];
   const assignmentTargets = new Set<string>();
   const readWriteTargets = new Set<string>();
   const observableWrites: Array<{ start: number; end: number; name: string; kind: "member" | "binding" }> = [];
@@ -1133,6 +1135,11 @@ export function analyzeCorsaSourceFacts(
       && unwrap(node.object).type === "ArrayExpression" && typeof node.property.start === "number") {
       arrayLiteralReceivers.add(node.property.start);
     }
+    if (node.type === "MemberExpression" && node.computed !== true && isNode(node.object) && isNode(node.property)
+      && unwrap(node.object).type === "Identifier" && typeof unwrap(node.object).start === "number"
+      && typeof node.property.start === "number") {
+      identifierMemberReads.push({ identifier: unwrap(node.object).start as number, property: node.property.start });
+    }
     // A plain assignment and a binding-pattern or loop target only write; a compound assignment and an update
     // read the member before writing it, so both halves of the contract apply.
     if (node.type === "AssignmentExpression" && isNode(node.left)) {
@@ -1222,6 +1229,40 @@ export function analyzeCorsaSourceFacts(
     if (!frontend.getSymbolAtPosition) return null;
     try { return frontend.getSymbolAtPosition(fileName, position)?.id ?? null; } catch { return null; }
   };
+  // A `const` initialized by an array literal holds that genuine Array whatever interface its type names, so a
+  // member read through its symbol selects the `Array#` contract exactly as the literal written there would. A
+  // conditional between two such values, and a `const` relaying another one, are the same; the relay is settled
+  // by iterating, since a declarator may name one declared later in the file.
+  const arrayBindings = new Set<string>();
+  const allocatesArray = (node: EstreeNode | undefined): boolean => {
+    if (node === undefined) return false;
+    const value = unwrap(node);
+    if (value.type === "ArrayExpression") return true;
+    if (value.type === "ConditionalExpression") {
+      return isNode(value.consequent) && isNode(value.alternate) && allocatesArray(value.consequent) && allocatesArray(value.alternate);
+    }
+    if (value.type !== "Identifier" || typeof value.start !== "number") return false;
+    const symbol = symbolIdAt(value.start);
+    return symbol !== null && arrayBindings.has(symbol);
+  };
+  const pendingArrayBindings = new Set(constDeclaratorCandidates.filter((declarator) =>
+    parents.get(declarator)?.type === "VariableDeclaration" && parents.get(declarator)?.kind === "const"));
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const declarator of pendingArrayBindings) {
+      const id = declarator.id as EstreeNode;
+      if (typeof id.start !== "number" || !allocatesArray(declarator.init as EstreeNode)) continue;
+      pendingArrayBindings.delete(declarator);
+      const symbol = symbolIdAt(id.start);
+      if (symbol === null) continue;
+      arrayBindings.add(symbol);
+      changed = true;
+    }
+  }
+  if (arrayBindings.size > 0) for (const read of identifierMemberReads) {
+    const symbol = symbolIdAt(read.identifier);
+    if (symbol !== null && arrayBindings.has(symbol)) arrayLiteralReceivers.add(read.property);
+  }
   // A `const` bound to an awaited literal import names the namespace object wherever its symbol is the receiver.
   const namespaceBindings = new Set<string>();
   for (const declarator of constDeclaratorCandidates) {

@@ -636,6 +636,15 @@ unknown になり、`loud` 自身の効果も落ちていた。callback 位置�
 (`<anonymous>`) の宣言として登録する。default export の束縛は export 自身が一度だけ書き、どのコードも
 書き換えられない。async と generator は名前付きの宣言と同じ理由で対象外。
 
+**閉じた既知差: 配列リテラルで初期化した `const` の受け手。** `Readonly*` には catalog entry が無く、
+Corsa 側はその場に書かれた配列リテラルだけを `Array#` に絞っていたので、`const kinds = [...] as const;
+kinds.map(...)` が unknown だった (TS6 側の `isArrayLiteralReceiver` は `const` を辿る)。配列リテラル
+(`as const`・`satisfies`・括弧・条件式の両辺がリテラル) で初期化した `const` の symbol を集め、受け手が
+その symbol を指す識別子の member 読みも `Array#` を選ぶ。`const` を別の `const` で中継したものも
+反復で解決する。`let`、構造型の値を受けた `const`、同名の引数は対象外。own property で method を
+上書きされる可能性は、`Array` 型の受け手と同じく「標準の member」という仮定に含まれ、各 site は
+assumption ledger に記録される。
+
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →
 caller の事前条件を証明 → check 結果に返す**、までを通す。
