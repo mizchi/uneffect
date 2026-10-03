@@ -445,6 +445,22 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         ...(capturedCallbacks?.length ? { capturedCallbacks } : {}),
       };
     }
+    if (contract.symbol.module === "lib.es" && (contract.symbol.export === "RegExp#test" || contract.symbol.export === "RegExp#exec")) {
+      // Only a literal whose flags omit g and y leaves lastIndex unwritten; follow a const binding back to one.
+      const lastIndexFree = (expression: ts.Expression, seen: Set<ts.Symbol>): boolean => {
+        let current = expression;
+        while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current) || ts.isSatisfiesExpression(current)
+          || ts.isNonNullExpression(current) || ts.isTypeAssertionExpression(current)) current = current.expression;
+        if (ts.isRegularExpressionLiteral(current)) return !/[gy]/u.test(current.text.slice(current.text.lastIndexOf("/") + 1));
+        if (!ts.isIdentifier(current)) return false;
+        const symbol = this.#checker.getSymbolAtLocation(current);
+        const declaration = symbol?.valueDeclaration;
+        if (!symbol || seen.has(symbol) || !declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+          || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return false;
+        return lastIndexFree(declaration.initializer, new Set(seen).add(symbol));
+      };
+      if (!ts.isPropertyAccessExpression(call.expression) || !lastIndexFree(call.expression.expression, new Set())) return undefined;
+    }
     if (contract.symbol.module === "lib.es" && contract.symbol.export === "String#localeCompare"
       && (call.arguments.length !== 1 || ts.isSpreadElement(call.arguments[0]!))) return undefined;
     if (contract.symbol.module === "lib.es" && contract.symbol.export === "String#split") {

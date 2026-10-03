@@ -69,6 +69,12 @@ export interface CorsaSourceFacts {
    * body that runs however the checker names its type — including the readonly tuple `as const` produces.
    */
   readonly arrayLiteralReceivers: ReadonlySet<number>;
+  /**
+   * Member offsets whose receiver is a regular expression literal without the global or sticky flag, written at
+   * the site or held by a same-file `const` initialized by one. Matching through such a receiver reads
+   * `lastIndex` but never writes it.
+   */
+  readonly lastIndexFreeRegExpReceivers: ReadonlySet<number>;
   /** `${start}:${end}` keys of member expressions written but not read, so the site selects the write semantics. */
   readonly assignmentTargets: ReadonlySet<string>;
   /** `${start}:${end}` keys of member expressions both read and written, such as a compound assignment. */
@@ -837,6 +843,8 @@ export function analyzeCorsaSourceFacts(
   const arrayLiteralReceivers = new Set<number>();
   /** Static member reads whose receiver is a bare identifier: the identifier's offset and the member's. */
   const identifierMemberReads: Array<{ identifier: number; property: number }> = [];
+  /** Static `test` / `exec` reads, with their receivers, for the regular expression admission. */
+  const regExpMemberReads: Array<{ receiver: EstreeNode; property: number }> = [];
   const assignmentTargets = new Set<string>();
   const readWriteTargets = new Set<string>();
   const observableWrites: Array<{ start: number; end: number; name: string; kind: "member" | "binding" }> = [];
@@ -1136,6 +1144,11 @@ export function analyzeCorsaSourceFacts(
       arrayLiteralReceivers.add(node.property.start);
     }
     if (node.type === "MemberExpression" && node.computed !== true && isNode(node.object) && isNode(node.property)
+      && node.property.type === "Identifier" && (node.property.name === "test" || node.property.name === "exec")
+      && typeof node.property.start === "number") {
+      regExpMemberReads.push({ receiver: node.object, property: node.property.start });
+    }
+    if (node.type === "MemberExpression" && node.computed !== true && isNode(node.object) && isNode(node.property)
       && unwrap(node.object).type === "Identifier" && typeof unwrap(node.object).start === "number"
       && typeof node.property.start === "number") {
       identifierMemberReads.push({ identifier: unwrap(node.object).start as number, property: node.property.start });
@@ -1242,6 +1255,17 @@ export function analyzeCorsaSourceFacts(
   // member read through its symbol selects the `Array#` contract exactly as the literal written there would. A
   // conditional between two such values, and a `const` relaying another one, are the same; the relay is settled
   // by iterating, since a declarator may name one declared later in the file.
+  const regExpBindings = new Set<string>();
+  const lastIndexFreeRegExp = (node: EstreeNode | undefined): boolean => {
+    if (node === undefined) return false;
+    const value = unwrap(node);
+    const regex = (value as { regex?: { flags?: unknown } }).regex;
+    if (value.type === "Literal" && regex !== undefined) return typeof regex.flags === "string" && !/[gy]/u.test(regex.flags);
+    if (value.type !== "Identifier" || typeof value.start !== "number") return false;
+    const symbol = symbolIdAt(value.start);
+    return symbol !== null && regExpBindings.has(symbol);
+  };
+  const lastIndexFreeRegExpReceivers = new Set<number>();
   const arrayBindings = new Set<string>();
   const allocatesArray = (node: EstreeNode | undefined): boolean => {
     if (node === undefined) return false;
@@ -1268,6 +1292,21 @@ export function analyzeCorsaSourceFacts(
       changed = true;
     }
   }
+  const pendingRegExpBindings = new Set(constDeclaratorCandidates.filter((declarator) =>
+    parents.get(declarator)?.type === "VariableDeclaration" && parents.get(declarator)?.kind === "const"));
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const declarator of pendingRegExpBindings) {
+      const id = declarator.id as EstreeNode;
+      if (typeof id.start !== "number" || !lastIndexFreeRegExp(declarator.init as EstreeNode)) continue;
+      pendingRegExpBindings.delete(declarator);
+      const symbol = symbolIdAt(id.start);
+      if (symbol === null) continue;
+      regExpBindings.add(symbol);
+      changed = true;
+    }
+  }
+  for (const read of regExpMemberReads) if (lastIndexFreeRegExp(read.receiver)) lastIndexFreeRegExpReceivers.add(read.property);
   if (arrayBindings.size > 0) for (const read of identifierMemberReads) {
     const symbol = symbolIdAt(read.identifier);
     if (symbol !== null && arrayBindings.has(symbol)) arrayLiteralReceivers.add(read.property);
@@ -1491,7 +1530,7 @@ export function analyzeCorsaSourceFacts(
       ],
     });
   }
-  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, observableWrites, receiverTypes, throws, coercions,
+  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, lastIndexFreeRegExpReceivers, assignmentTargets, readWriteTargets, observableWrites, receiverTypes, throws, coercions,
     dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, freshArguments, allocatedReceivers, identifierReceivers, memberChainReceivers, literalDynamicImports, importNamespaceReceivers, destructuredImports, assignedInlineFunctions, diagnostics };
 }
 

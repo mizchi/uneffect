@@ -826,6 +826,14 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       trustReason: `ECMAScript ${owner}.${name} completes without a user-observable side effect and reaches no user code for the arguments a checked program can pass`,
       trustOwner: "@mizchi/uneffect",
     }))),
+    // Matching writes `lastIndex` only through a global or sticky receiver, so both members are admitted for a
+    // receiver whose flags the frontend has read from a literal without either.
+    ...([["test", []], ["exec", [{ kind: "result" as const, refinement: { kind: "fresh" as const } }]]] as const).map(([name, primitives]) => reviewed("javascript", {
+      symbol: { module: "lib.es", export: `RegExp#${name}` },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [...primitives] },
+      trustReason: `With a standard RegExp receiver whose flags include neither g nor y and a string argument, ECMAScript RegExp.${name} reads lastIndex without writing it and reaches no user code${name === "exec" ? ", returning a fresh match Array or null" : ""}; frontends must establish the flags. The non-standard legacy RegExp static match properties some engines update are not modelled`,
+      trustOwner: "@mizchi/uneffect",
+    })),
     reviewed("javascript", {
       symbol: { module: "lib.es", export: "String#localeCompare" },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [] },

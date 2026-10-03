@@ -659,6 +659,15 @@ string なら、比較対象の文字列を変換して既定の locale で比�
 (Corsa は構文の引数個数、TS6 は `frontend-adapter` の `arguments.length`)。locale 付き・options 付き・
 spread・boxed `String` の受け手は従来通り unknown。
 
+**閉じた既知差: `lastIndex` を書かない正規表現の `test` / `exec`。** 上の holdback の「本当の修正」として
+挙げた per-site の受け手絞り込みを入れた。`g` も `y` も持たない正規表現リテラル (その場に書かれたもの、
+または同じファイルでそれを初期化子とする `const`、`const` の中継を含む) を受け手とする `test` / `exec`
+だけ catalog entry を選ぶ。そのとき RegExpBuiltinExec は `lastIndex` を読むが書かず、string 引数の変換は
+user code に届かない。`exec` の結果は fresh な配列か `null`。`g` / `y` 付き、`new RegExp(...)`、引数で
+受け取った `RegExp` は従来通り unknown。TS6 側は `frontend-adapter` が同じ条件を強制する。一部の
+engine が更新する非標準の `RegExp.$1` などの legacy static は ECMA-262 に無く、モデル化しない
+(`trustReason` に残差として書いた)。
+
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →
 caller の事前条件を証明 → check 結果に返す**、までを通す。

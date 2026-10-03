@@ -568,6 +568,37 @@ export function plain(value: string): string { return value; }
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("admits RegExp test and exec only on a literal that cannot write lastIndex", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-regexp-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), `
+        const word = /^[a-z]+$/iu;
+        const relay = word;
+        const sweeping = /x/g;
+        const sticky = /x/y;
+        export function inline(text: string): boolean { return /^\\d+$/.test(text); }
+        export function bound(text: string): boolean { return word.test(text); }
+        export function relayed(text: string): boolean { return relay.test(text); }
+        export function matched(text: string): boolean { return word.exec(text) !== null; }
+        export function global(text: string): boolean { return sweeping.test(text); }
+        export function stickyTest(text: string): boolean { return sticky.test(text); }
+        export function inlineGlobal(text: string): boolean { return /x/g.test(text); }
+        export function constructed(text: string): boolean { return new RegExp("x").test(text); }
+        export function supplied(pattern: RegExp, text: string): boolean { return pattern.test(text); }
+      `);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", lib: ["ES2024"], types: [] }, files: ["index.ts"] }));
+      const checked = await checkCorsaProject({ configFile: temporaryConfig });
+      const evidence = Object.fromEntries(checked.summaries.map((item) => [item.functionName, item.evidence]));
+      // Without the global or sticky flag the match reads lastIndex but never writes it.
+      for (const name of ["inline", "bound", "relayed", "matched"]) expect([name, evidence[name]]).toEqual([name, "inferred"]);
+      // A global or sticky receiver writes lastIndex, and a receiver whose flags are not written here may.
+      for (const name of ["global", "stickyTest", "inlineGlobal", "constructed", "supplied"]) {
+        expect([name, evidence[name]]).toEqual([name, "unknown"]);
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("admits localeCompare only in its one-argument form on a primitive string", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-locale-compare-"));
     try {
