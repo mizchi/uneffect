@@ -100,17 +100,45 @@ describe("native direct-call effect propagation", () => {
   it("keeps mutable aliases, methods, and generators unverified while proving a resolved pure cycle", async () => {
     const result = await check({ "main.ts": `
       function leaf() { console.log("leaf"); }
-      const alias = leaf;
+      let alias = leaf;
       const object = { method: leaf };
       function* generator() { console.log("deferred"); yield 1; }
       export function indirect() { alias(); object.method(); generator(); }
       function a() { b(); } function b() { a(); }
     ` });
     expect(names(result, "indirect")).toEqual([]);
-    // An aliased binding, an object member, and a generator body are outside the direct-call model.
+    // A mutable alias, an object member, and a generator body are outside the direct-call model.
     expect(result.summaries.find(item => item.functionName === "indirect")?.evidence).toBe("unknown");
     // A cycle whose every edge resolves to an analyzed body reaches a fixed point with no unresolved site in it.
     for (const name of ["a", "b"]) expect(result.summaries.find(item => item.functionName === name)?.evidence).toBe("inferred");
+  });
+
+  it("follows a const alias to the body of a binding nothing reassigns", async () => {
+    const result = await check({
+      "leaf.ts": `export function report() { console.log("leaf"); }`,
+      "main.ts": `import { report } from "./leaf.js";
+        function quiet() { return 1; }
+        function loud() { console.log("loud"); }
+        function swapped() { console.log("stale"); }
+        declare function replacement(): void;
+        swapped = replacement;
+        const alias = quiet, twice = alias, imported = report, stale = swapped;
+        let mutable = loud;
+        export function viaAlias() { return alias(); }
+        export function viaChain() { return twice(); }
+        export function viaImport() { imported(); }
+        export function viaStale() { stale(); }
+        export function viaLet() { mutable(); }
+        export function shadowed(alias: () => void) { alias(); }`,
+    });
+    const evidence = (name: string) => result.summaries.find(item => item.functionName === name)?.evidence;
+    // A const initialized by a function binding that is never written holds that binding's one body.
+    expect([names(result, "viaAlias"), evidence("viaAlias")]).toEqual([[], "inferred"]);
+    expect([names(result, "viaChain"), evidence("viaChain")]).toEqual([[], "inferred"]);
+    expect([names(result, "viaImport"), evidence("viaImport")]).toEqual([["Console"], "trusted"]);
+    // A written source, a `let` alias, and a parameter that merely shares the name do not.
+    for (const name of ["viaStale", "viaLet"]) expect([name, evidence(name)]).toEqual([name, "unknown"]);
+    expect(names(result, "shadowed")).toEqual(["InvokeUserCode"]);
   });
 
   it.each(["leaf = replacement;", "({ leaf } = { leaf: replacement });", "[leaf] = [replacement];"])("does not link a reassigned declaration to its stale body: %s", async assignment => {

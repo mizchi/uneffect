@@ -50,6 +50,11 @@ export interface CorsaMethodFact {
 /** Native identities link bodies; shorthand writes conservatively exclude same-name candidates. */
 export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: string, text: string): {
   declarations: Array<{ symbolId: string; start: number; name: string }>;
+  /**
+   * `const a = b` with `b` a bare identifier, from the alias's symbol to the one `b` resolves to. The alias holds
+   * whatever `b` held when it was initialized, so it names `b`'s body exactly when `b` itself does.
+   */
+  aliases: Array<{ symbolId: string; targetSymbolId: string }>;
   writes: Set<string>;
   ambiguousWrites: Set<string>;
   calls: Map<number, string>;
@@ -92,6 +97,7 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
 } {
   const parsed = parseSync(file, text, { lang: oxcLanguage(file) });
   const declarations: Array<{ symbolId: string; start: number; name: string }> = [];
+  const aliases: Array<{ symbolId: string; targetSymbolId: string }> = [];
   const writes = new Set<string>();
   const ambiguousWrites = new Set<string>();
   const calls = new Map<number, string>();
@@ -106,7 +112,7 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
   const classFacts = () => ({
     classes, methods, superCalls, privateCalls, staticInitializers, decoratorApplications, decoratedMembers,
   });
-  if (parsed.errors.length) return { declarations, writes, ambiguousWrites, calls, parameters, ...classFacts() };
+  if (parsed.errors.length) return { declarations, aliases, writes, ambiguousWrites, calls, parameters, ...classFacts() };
   const recordWrite = (node: Node, shorthand = false): void => {
     if (node.type === "Identifier") {
       const symbol = frontend.getSymbolAtPosition(file, node.start);
@@ -127,7 +133,7 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
     for (const child of oxcChildren(node)) visit(child);
   };
   visit(parsed.program);
-  if (dynamicScope) return { declarations, writes, ambiguousWrites, calls, parameters, ...classFacts() };
+  if (dynamicScope) return { declarations, aliases, writes, ambiguousWrites, calls, parameters, ...classFacts() };
   // A plain identifier parameter is the one shape whose value is exactly what one argument position supplies.
   // A default, a rest element, a binding pattern, and a parameter property each stand for something else, so
   // invoking them stays an unresolved site rather than an obligation on a caller.
@@ -159,6 +165,14 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
       for (const declarator of node.declarations) {
         const init = declarator.init;
         if (declarator.id.type !== "Identifier" || !init) continue;
+        if (init.type === "Identifier") {
+          const alias = frontend.getSymbolAtPosition(file, declarator.id.start);
+          const target = frontend.getSymbolAtPosition(file, init.start);
+          if (alias?.declarations?.length === 1 && target) {
+            aliases.push({ symbolId: alias.id, targetSymbolId: (frontend.getAliasedSymbol(target) ?? target).id });
+          }
+          continue;
+        }
         if ((init.type !== "ArrowFunctionExpression" && init.type !== "FunctionExpression") || init.async || init.generator) continue;
         declare(declarator.id, init.start);
       }
@@ -302,5 +316,5 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
     for (const child of oxcChildren(node)) collectClasses(child, current);
   };
   collectClasses(parsed.program, null);
-  return { declarations, writes, ambiguousWrites, calls: frozen.calls, parameters, ...classFacts() };
+  return { declarations, aliases, writes, ambiguousWrites, calls: frozen.calls, parameters, ...classFacts() };
 }

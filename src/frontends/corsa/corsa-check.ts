@@ -453,6 +453,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
     const declaredEffects = new Map<string, { effects: Effect[]; fileName: string; line: number; directive: "effect" | "module_effect" }>();
     const assumptions: AssumptionEntry[] = [];
     const declarations = new Map<string, { key: string; name: string } | null>();
+    const constAliases = new Map<string, string>();
     const writes = new Set<string>();
     const ambiguousWrites = new Set<string>();
     const byFunction = new Map<string, {
@@ -541,6 +542,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         declarations.set(binding.symbolId, declarations.has(binding.symbolId) ? null : { key, name: binding.name });
       }
       for (const symbol of bindings.writes) writes.add(symbol);
+      for (const alias of bindings.aliases) constAliases.set(alias.symbolId, alias.targetSymbolId);
       for (const name of bindings.ambiguousWrites) ambiguousWrites.add(name);
       for (const message of syntax.errors) {
         diagnostics.push({
@@ -1147,7 +1149,11 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       return inherited === undefined ? undefined : [...targets, ...inherited];
     };
     /** The analyzed boundary a callee symbol names, or `undefined` when no unique immutable body backs it. */
-    const resolveTarget = (symbol: string): string | undefined => {
+    const resolveTarget = (symbol: string, seen = new Set<string>()): string | undefined => {
+      // A `const` alias is never written, so it names its source's body exactly when the source does. A cycle of
+      // aliases is a temporal dead zone, which names no body.
+      const source = constAliases.get(symbol);
+      if (source !== undefined) return seen.has(symbol) ? undefined : resolveTarget(source, seen.add(symbol));
       const target = writes.has(symbol) ? undefined : declarations.get(symbol);
       return target && !ambiguousWrites.has(target.name) && byFunction.has(target.key) ? target.key : undefined;
     };
