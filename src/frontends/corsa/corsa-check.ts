@@ -488,6 +488,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
        * them supplies their arguments elsewhere, so one that owes an obligation of its own cannot be composed.
        */
       composedValues: Array<{ key: string; label: string }>;
+      /** Contract callbacks written as an identifier, composed once every file has contributed its bindings. */
+      callbackBindings: Array<{ fileName: string; position: number; label: string }>;
     }>();
     type Boundary = NonNullable<ReturnType<typeof byFunction.get>>;
     /**
@@ -747,7 +749,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           functionName: owner.name, fileName, span: { start: owner.start, end: owner.end },
           parameters: [...owner.parameters], names: [], unclassified: false, unresolved: new Set<string>(), deferred: new Map<string, string>(),
           calleeSymbols: new Set<string>(), directCallees: new Set<string>(), resolvedSymbols: new Set<string>(),
-          invokesUserCode: false, moduleReasons: [], argumentCalls: [], classCalls: [], discharges: [], composedValues: [],
+          invokesUserCode: false, moduleReasons: [], argumentCalls: [], classCalls: [], discharges: [], composedValues: [], callbackBindings: [],
         };
         byFunction.set(key, current);
         return current;
@@ -893,10 +895,13 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           if (args !== undefined && index >= args.length) continue;
           const inline = args?.[index];
           const callee = inline === undefined || inline === null ? undefined : syntax.functions.find((item) => item.start === inline);
+          const identifier = indexAccess.callArgumentIdentifiers.get(span)?.[index];
           if (callee) {
             const key = `${fileName}:${callee.start}:${callee.name}`;
             caller.directCallees.add(key);
             caller.composedValues.push({ key, label: `the callback ${site.name} receives` });
+          } else if (args !== undefined && identifier !== undefined && identifier !== null) {
+            caller.callbackBindings.push({ fileName, position: identifier, label: `the callback ${site.name} receives` });
           } else caller.unclassified = true;
         }
       };
@@ -1113,7 +1118,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           functionName: fn.name, fileName, span: { start: fn.start, end: fn.end },
           parameters: [...fn.parameters], names: [], unclassified: false, unresolved: new Set<string>(), deferred: new Map<string, string>(),
           calleeSymbols: new Set<string>(), directCallees: new Set<string>(), resolvedSymbols: new Set<string>(),
-          invokesUserCode: false, moduleReasons: [], argumentCalls: [], classCalls: [], discharges: [], composedValues: [],
+          invokesUserCode: false, moduleReasons: [], argumentCalls: [], classCalls: [], discharges: [], composedValues: [], callbackBindings: [],
         });
       }
     }
@@ -1222,6 +1227,19 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       return symbol === null ? undefined : invokedParameter(symbol);
     };
     // An obligation discovered on one boundary can create one on its caller, so this runs to a fixed point.
+    // A callback named by a binding is the boundary that binding names, when it names exactly one immutable body;
+    // composing it is then the same as composing a function written inline at the argument.
+    for (const item of byFunction.values()) for (const callback of item.callbackBindings) {
+      const supplied = argumentSymbolAt(callback.fileName, callback.position);
+      const bound = supplied === null ? undefined : resolveTarget(supplied);
+      if (bound === undefined) {
+        item.unclassified = true;
+        item.unresolved.add(callback.label);
+        continue;
+      }
+      item.directCallees.add(bound);
+      item.composedValues.push({ key: bound, label: callback.label });
+    }
     for (let settled = false; !settled;) {
       settled = true;
       for (const [key, item] of byFunction) {
@@ -1291,7 +1309,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
             functionName: "<module>", fileName: edge.target, span: { start: 0, end: (sources.get(edge.target) ?? "").length },
             parameters: [], names: [], unclassified: false, unresolved: new Set<string>(), deferred: new Map<string, string>(),
             calleeSymbols: new Set<string>(), directCallees: new Set<string>(), resolvedSymbols: new Set<string>(),
-            invokesUserCode: false, moduleReasons: [], argumentCalls: [], classCalls: [], discharges: [], composedValues: [],
+            invokesUserCode: false, moduleReasons: [], argumentCalls: [], classCalls: [], discharges: [], composedValues: [], callbackBindings: [],
           });
         }
         edge.importer.directCallees.add(key);

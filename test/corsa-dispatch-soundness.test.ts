@@ -205,6 +205,26 @@ describe("dispatch soundness", () => {
     expect(summary(result, "register")?.evidence).toBe("unknown");
   });
 
+  it("composes a contract callback named by a binding with one immutable body", async () => {
+    const result = await check({ "main.ts": `
+      function loud() { console.log("effect"); }
+      function pure() { return 1; }
+      function swapped() {}
+      declare function replacement(): void;
+      swapped = replacement;
+      export function named() { [1, 2].forEach(loud); }
+      export function mapped(values: number[]) { return values.map(pure); }
+      export function stale() { [1, 2].forEach(swapped); }
+      export function supplied(callback: () => void) { [1, 2].forEach(callback); }
+    ` });
+    // The identifier names the same boundary an inline function written there would be.
+    expect([names(result, "named"), summary(result, "named")?.evidence]).toEqual([["Console"], "trusted"]);
+    expect(summary(result, "mapped")?.evidence).not.toBe("unknown");
+    // A written binding and a parameter name no body this path can compose.
+    expect(summary(result, "stale")?.evidence).toBe("unknown");
+    expect(summary(result, "supplied")?.evidence).toBe("unknown");
+  });
+
   it("charges a static initializer to the scope that evaluates the class declaration", async () => {
     const result = await check({ "main.ts": `
       export function declaresStaticOnly() {

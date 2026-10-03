@@ -623,6 +623,13 @@ TDZ で投げて呼出に届かないので、どちらでも別名の値は `le
 関数の別名・引数として渡した別名も同じ規則で解決し、別名の循環は TDZ なので本体なし。`let` の別名と、
 引数・default 値・型 assertion 付きの初期化子は対象外。
 
+**閉じた既知差: 識別子で渡した contract の callback。** `[1, 2].forEach(loud)` や `setTimeout(tick, 1)` の
+ように reviewed contract の callback 引数を**識別子**で渡すと、inline 関数しか結合しなかったので呼出側が
+unknown になり、`loud` 自身の効果も落ちていた。callback 位置の識別子は全ファイルを読んだ後に呼出の
+結合と同じ `resolveTarget` で解決し、書き換えられない唯一の本体を指すときだけ inline 関数と同じく
+合成する。書き換えられる束縛・引数・解決できない識別子は従来通り unknown。合成する値が自分の引数を
+呼ぶ (呼出義務を持つ) 場合は、inline 関数と同じく合成できず unknown のまま。
+
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →
 caller の事前条件を証明 → check 結果に返す**、までを通す。
