@@ -1,16 +1,25 @@
 # Releasing
 
-The normal npm release path uses GitHub Actions and npm Trusted Publishing.
-Version 0.5.0 uses the manual procedure below. No npm token is stored in this
-repository.
+Pushing a `v<version>` tag publishes to npm. `.github/workflows/publish.yml`
+verifies the package, runs `npm publish` through npm Trusted Publishing (OIDC,
+with provenance), and creates the GitHub Release from `CHANGELOG.md`. No npm
+token and no GitHub App are involved.
 
 ## One-time external setup
 
-- Install the `mizchi-release-please` GitHub App for this repository and store
-  its private key as `RELEASE_PLEASE_APP_PRIVATE_KEY`.
-- On npm, configure `@mizchi/uneffect` Trusted Publisher for owner `mizchi`,
-  repository `uneffect`, and workflow filename `publish.yml`.
+- On npm, register the trusted publisher for the workflow filename
+  `publish.yml`. Renaming the workflow requires registering it again.
+
+  ```sh
+  npm trust github @mizchi/uneffect --repo mizchi/uneffect --file publish.yml --allow-publish -y
+  npm trust list @mizchi/uneffect
+  ```
+
+- Restrict creating, moving, and deleting `v*` tags to repository admins with a
+  tag ruleset. Whoever can push a `v*` tag can publish.
 - Keep the npm account/package 2FA policy compatible with trusted publishing.
+- Do not add `NPM_TOKEN` or `NODE_AUTH_TOKEN` to the repository or the
+  workflow; a token takes precedence over OIDC.
 
 ## Release gate
 
@@ -18,9 +27,9 @@ repository.
 just release-check
 ```
 
-The checked-in npm, evidence, and effect-baseline versions must agree.
-The publish job additionally refuses a GitHub Release whose tag is not exactly
-`v<package.json version>`.
+The checked-in npm, evidence, and effect-baseline versions must agree
+(`node ci/bump-version.mjs --check`). The publish job additionally refuses a
+tag that is not exactly `v<package.json version>`.
 
 `just package-check` is part of this gate. It runs the npm lifecycle, installs
 the actual tarball into fresh Node 24 consumers, and records
@@ -36,36 +45,68 @@ compatible addition; experimental entrypoints are deliberately excluded.
 
 ## Normal release flow
 
-After conventional `feat:`/`fix:` commits have landed on `main`, explicitly
-start the release workflow:
+Run these on an up-to-date `main`, replacing `0.6.0` with the new version.
 
 ```sh
-gh workflow run release-please.yml --repo mizchi/uneffect
+# 1. Bump package.json and the stamped runtime versions together.
+node ci/bump-version.mjs 0.6.0
+
+# 2. Add the new section to CHANGELOG.md above the existing history.
+GITHUB_TOKEN=$(gh auth token) npx -y git-cliff@2.14.2 --unreleased --tag v0.6.0 --prepend CHANGELOG.md
+
+# 3. Run the gate, then commit.
+just release-check
+git commit -am "chore: release 0.6.0"
+
+# 4. Tag and push. The tag push starts publish.yml.
+git tag v0.6.0
+git push origin main v0.6.0
+gh run watch
 ```
 
-Review and merge the generated release PR. That workflow creates the tag and
-GitHub Release; the published release event then runs `publish.yml`, verifies
-the package, and executes `npm publish` with OIDC provenance.
+- `ci/bump-version.mjs` rewrites `package.json` and the lines marked
+  `// x-release-version` in `src/evidence/evidence.ts` and
+  `src/effects/effect-baseline.ts`. Do not use `npm version`; it leaves the
+  runtime constants behind and the release-readiness test fails.
+- `cliff.toml` lists `feat`, `fix`, `perf`, `revert`, and `docs` commits and
+  credits outside contributors with `by @login`. Commits without a Conventional
+  Commits prefix are omitted, so compare the new section with
+  `git log v<previous>..HEAD` and add anything user-visible that is missing
+  before committing. `GITHUB_TOKEN` is only used to look up authors and pull
+  requests; add `--offline` to skip that lookup.
+- `--prepend` strips the header configured in `cliff.toml` from the existing
+  file and writes the new section directly under it. Keep the first lines of
+  `CHANGELOG.md` identical to that header and do not keep an `## Unreleased`
+  heading in the file. Entries for 0.5.1 and earlier were not written by
+  git-cliff and are left as they are.
+- A version containing `-` (for example `0.6.0-rc.0`, tag `v0.6.0-rc.0`) is
+  published with the npm dist-tag `next` and marked as a GitHub pre-release.
+- The GitHub Release body is the `CHANGELOG.md` section for the version
+  (`node ci/release-notes.mjs 0.6.0` prints it). Without a section the workflow
+  falls back to GitHub's generated notes.
+- The registry can lag about a minute behind a successful workflow. Confirm
+  with `npm view @mizchi/uneffect version dist-tags --json`.
 
-Version synchronization is configured in `release-please-config.json` and
-`.release-please-manifest.json`. After the 0.5.0 reconciliation below, let
-release-please update versions for subsequent releases.
+If the workflow fails before `npm publish`, fix the cause, delete the tag
+(`git tag -d v0.6.0 && git push origin :v0.6.0`), and tag the fixed commit
+again. A version that reached npm cannot be published again: publish a
+corrective patch instead. Never move a tag for a published version.
 
 ## 0.5.0 reconciliation
 
 At preparation time, npm `latest` was 0.4.0, published from commit
 `26994e38` on 2026-09-17.
 That commit changed `package.json` to 0.4.0 locally but was never merged into
-GitHub `main`; the release-please manifest and the two runtime version constants
-still read 0.3.0. There is no `v0.4.0` Git tag or GitHub Release. Do not create
-a retroactive GitHub Release for 0.4.0, because the publish workflow would try
-to publish that already-used version again.
+GitHub `main`; the version manifest of the release tooling used at the time
+(release-please) and the two runtime version constants still read 0.3.0. There
+is no `v0.4.0` Git tag or GitHub Release. Do not push a retroactive `v0.4.0`
+tag: the publish workflow would try to publish that already-used version again.
 
 The 0.5.0 release PR synchronized the package, manifest, and runtime constants
 and recorded the 0.4.0 release in the changelog. Its merged `main` commit is
 `49ade21254b457f9ae33f4ebefd1f0a420d45151`; the PR CI and local
-`just release-check` passed. For this release only, publish from that exact
-commit with the maintainer's npm login:
+`just release-check` passed. That release was published from that exact commit
+with the maintainer's npm login:
 
 ```sh
 git fetch origin main
@@ -78,27 +119,18 @@ git tag -a v0.5.0 49ade21254b457f9ae33f4ebefd1f0a420d45151 -m 'v0.5.0'
 git push origin v0.5.0
 ```
 
-The local publish has no GitHub Actions OIDC provenance, so it overrides the
-package's `publishConfig.provenance`. Tag only after npm confirms 0.5.0 was
-published. Do not publish a GitHub Release for `v0.5.0` while `publish.yml`
-listens for `release: published`: that event would run a second `npm publish`
-for an already-used version. Do not dispatch `release-please.yml` for 0.5.0;
-the version files are already prepared.
-
-The `v0.5.0` tag and manifest establish the baseline for subsequent
-release-please releases. `include-component-in-tag: false` keeps their tags in
-the `v<version>` format required by the publish guard.
+The local publish had no GitHub Actions OIDC provenance, so it overrode the
+package's `publishConfig.provenance`. The tag was pushed only after npm
+confirmed 0.5.0. Version 0.5.1 was the last release prepared by release-please;
+later releases use the tag flow above.
 
 ## 0.3.0 bootstrap record
 
-Version 0.3.0 was prepared before release-please was installed and was published
-to npm on 2026-09-06. At reconciliation time npm marked it as `latest`, but no
-matching `v0.3.0` Git tag or GitHub Release existed. Do not create a backfilled
-GitHub Release while the `release` event still invokes `publish.yml`: that would
-attempt to publish the already-used npm version. Any provenance repair must
-first make that workflow path non-publishing and must not move a tag after it is
-shared.
+Version 0.3.0 was prepared before any release automation was installed and was
+published to npm on 2026-09-06. At reconciliation time npm marked it as
+`latest`, but no matching `v0.3.0` Git tag or GitHub Release existed. Do not
+push a backfilled `v0.3.0` tag: the tag push would attempt to publish the
+already-used npm version.
 
-Later releases use the normal release-please flow above. Never reuse 0.3.0,
-run a second local publish for it, or move a shared tag. Publish a corrective
-patch when package contents need correction.
+Never reuse 0.3.0, run a second local publish for it, or move a shared tag.
+Publish a corrective patch when package contents need correction.

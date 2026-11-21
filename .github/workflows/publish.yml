@@ -1,16 +1,21 @@
 name: publish
 
+# Push a v* tag to publish. npm trusts this workflow by filename, so keep the
+# name publish.yml:
+#   npm trust github @mizchi/uneffect --repo mizchi/uneffect --file publish.yml --allow-publish
+# No npm token: npm authenticates through OIDC and attaches provenance.
 on:
-  release:
-    types: [published]
+  push:
+    tags: ['v*']
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release
+      id-token: write # npm trusted publishing (OIDC)
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -21,12 +26,33 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
+      - name: Verify release tag matches package version
+        run: node ci/verify-release-tag.mjs
+      - name: Verify stamped runtime versions match package version
+        run: node ci/bump-version.mjs --check
       - run: pnpm exec tsc -p tsconfig.json --noEmit
       - run: pnpm vitest run test/release-readiness.test.ts test/effect-baseline.test.ts
       - run: pnpm build
       - run: npm pack --dry-run
       - run: node ci/check-public-api.mjs
       - run: node ci/smoke-package.mjs
-      - name: Verify release tag matches package version
-        run: node ci/verify-release-tag.mjs
-      - run: npm publish
+      # Trusted publishing needs npm >= 11.5.1.
+      - run: npm install -g npm@11
+      - name: Publish to npm
+        run: |
+          case "${GITHUB_REF_NAME#v}" in
+            *-*) npm publish --tag next ;;
+            *)   npm publish ;;
+          esac
+      - name: Create the GitHub Release from the changelog
+        run: |
+          prerelease=""
+          case "${GITHUB_REF_NAME#v}" in *-*) prerelease="--prerelease" ;; esac
+          node ci/release-notes.mjs > "$RUNNER_TEMP/notes.md"
+          if [ -s "$RUNNER_TEMP/notes.md" ]; then
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" $prerelease
+          else
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes $prerelease
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}

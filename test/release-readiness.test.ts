@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { uneffectVersion } from "../src/evidence/evidence.js";
 import { effectBaselineToolVersion } from "../src/effects/effect-baseline.js";
@@ -17,10 +19,11 @@ describe("release metadata", () => {
 
   it("keeps package and evidence versions synchronized", () => {
     expect(manifest.name).toBe("@mizchi/uneffect");
-    const releaseState = JSON.parse(readFileSync(".release-please-manifest.json", "utf8")) as Record<string, string>;
-    expect(manifest.version).toBe(releaseState["."]);
     expect(uneffectVersion).toBe(manifest.version);
     expect(effectBaselineToolVersion).toBe(manifest.version);
+    const check = spawnSync(process.execPath, ["ci/bump-version.mjs", "--check"], { encoding: "utf8" });
+    expect(check.status, check.stderr).toBe(0);
+    expect(check.stdout).toContain(manifest.version);
   });
 
   it("publishes explicit runtime, type, schema, and license surfaces", () => {
@@ -153,34 +156,47 @@ describe("release metadata", () => {
     expect(overview).toContain("Unsupported or unknown");
   });
 
-  it("publishes 0.5 through a version-guarded OIDC workflow", () => {
-    const release = readFileSync(".github/workflows/release-please.yml", "utf8");
+  it("publishes on a v* tag push through a version-guarded OIDC workflow", () => {
     const publish = readFileSync(".github/workflows/publish.yml", "utf8");
-    const config = JSON.parse(readFileSync("release-please-config.json", "utf8")) as {
-      "include-component-in-tag": boolean;
-      packages: Record<string, { "extra-files": Array<{ path: string }> }>;
-    };
-    const releaseState = JSON.parse(readFileSync(".release-please-manifest.json", "utf8")) as Record<string, string>;
-    expect(release).toContain("workflow_dispatch:");
-    expect(release).toContain("RELEASE_PLEASE_APP_PRIVATE_KEY");
-    expect(publish).toContain("release:\n    types: [published]");
+    for (const retired of [
+      ".github/workflows/release-please.yml", "release-please-config.json", ".release-please-manifest.json",
+    ]) expect(existsSync(retired), retired).toBe(false);
+    expect(publish).toMatch(/^on:\n  push:\n    tags: \['v\*'\]\n\n/mu);
+    expect(publish).not.toMatch(/release:\s*\n\s*types:|workflow_dispatch|pull_request/u);
+    expect(publish).toContain("contents: write");
     expect(publish).toContain("id-token: write");
-    expect(publish).toContain("node ci/verify-release-tag.mjs");
-    expect(publish).toContain("npm publish");
-    expect(publish).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN/u);
-    expect(config["include-component-in-tag"]).toBe(false);
-    expect(config.packages["."]?.["extra-files"].map(({ path }) => path)).toEqual(expect.arrayContaining([
-      "src/evidence/evidence.ts", "src/effects/effect-baseline.ts",
-    ]));
-    expect(releaseState).toEqual({ ".": manifest.version });
+    expect(publish).toContain("registry-url: https://registry.npmjs.org");
+    expect(publish).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|RELEASE_PLEASE|create-github-app-token/u);
+    for (const action of publish.matchAll(/uses: (\S+)/gu)) expect(action[1]).toMatch(/@[0-9a-f]{40}$/u);
 
-    const matched = spawnSync(process.execPath, ["ci/verify-release-tag.mjs"], {
-      cwd: process.cwd(), env: { ...process.env, GITHUB_REF_NAME: `v${manifest.version}` }, encoding: "utf8",
+    const steps = [
+      "pnpm install --frozen-lockfile",
+      "node ci/verify-release-tag.mjs",
+      "node ci/bump-version.mjs --check",
+      "pnpm exec tsc -p tsconfig.json --noEmit",
+      "pnpm vitest run test/release-readiness.test.ts test/effect-baseline.test.ts",
+      "pnpm build",
+      "npm pack --dry-run",
+      "node ci/check-public-api.mjs",
+      "node ci/smoke-package.mjs",
+      "npm install -g npm@11",
+      "npm publish --tag next",
+      "node ci/release-notes.mjs",
+      "gh release create",
+    ].map((step) => [step, publish.indexOf(step)] as const);
+    for (const [step, index] of steps) expect(index, step).toBeGreaterThan(-1);
+    expect(steps.map(([, index]) => index)).toEqual(steps.map(([, index]) => index).toSorted((a, b) => a - b));
+    expect(publish).toContain("--generate-notes");
+
+    const verifyTag = (env: Record<string, string>) => spawnSync(process.execPath, ["ci/verify-release-tag.mjs"], {
+      cwd: process.cwd(), env: { ...process.env, GITHUB_REF_TYPE: "tag", ...env }, encoding: "utf8",
     });
+    const matched = verifyTag({ GITHUB_REF_NAME: `v${manifest.version}` });
     expect(matched.status, matched.stderr).toBe(0);
-    const mismatched = spawnSync(process.execPath, ["ci/verify-release-tag.mjs"], {
-      cwd: process.cwd(), env: { ...process.env, GITHUB_REF_NAME: "v9.9.9" }, encoding: "utf8",
-    });
+    const branch = verifyTag({ GITHUB_REF_NAME: `v${manifest.version}`, GITHUB_REF_TYPE: "branch" });
+    expect(branch.status).toBe(1);
+    expect(branch.stderr).toContain("not a tag");
+    const mismatched = verifyTag({ GITHUB_REF_NAME: "v9.9.9" });
     expect(mismatched.status).toBe(1);
     expect(mismatched.stderr).toContain("refusing to publish");
   });
@@ -217,5 +233,109 @@ describe("release metadata", () => {
     expect(releasing).toContain("all three verification fields to be `passed`");
     expect(releasing).toContain("api/public-api-v0.3.json");
     expect(releasing).toContain("baseline to hide a removal");
+  });
+});
+
+describe("release scripts", () => {
+  const stamped = ["src/evidence/evidence.ts", "src/effects/effect-baseline.ts"];
+  const scratchRoot = (): string => {
+    const root = mkdtempSync(join(tmpdir(), "uneffect-release-"));
+    for (const file of ["package.json", ...stamped]) {
+      mkdirSync(join(root, file, ".."), { recursive: true });
+      cpSync(file, join(root, file));
+    }
+    return root;
+  };
+  const run = (script: string, args: string[], env: Record<string, string> = {}) =>
+    spawnSync(process.execPath, [script, ...args], { encoding: "utf8", env: { ...process.env, ...env } });
+
+  it("marks the stamped runtime versions for the bump script, not release-please", () => {
+    for (const file of stamped) {
+      const source = readFileSync(file, "utf8");
+      expect(source.match(/"[^"]+"; \/\/ x-release-version$/gmu), file).toHaveLength(1);
+      expect(source).not.toContain("release-please");
+    }
+  });
+
+  it("bumps package.json and the stamped runtime versions together", () => {
+    const root = scratchRoot();
+    try {
+      const bumped = run("ci/bump-version.mjs", ["9.8.7-rc.0", "--root", root]);
+      expect(bumped.status, bumped.stderr).toBe(0);
+      const manifest = readFileSync(join(root, "package.json"), "utf8");
+      expect((JSON.parse(manifest) as { version: string }).version).toBe("9.8.7-rc.0");
+      expect(manifest.endsWith("}\n")).toBe(true);
+      expect(manifest.replace('"version": "9.8.7-rc.0"', "")).toBe(
+        readFileSync("package.json", "utf8").replace(/"version": "[^"]+"/u, ""),
+      );
+      for (const file of stamped) {
+        expect(readFileSync(join(root, file), "utf8")).toContain('"9.8.7-rc.0"; // x-release-version');
+      }
+      expect(run("ci/bump-version.mjs", ["--check", "--root", root]).status).toBe(0);
+
+      const stale = join(root, stamped[1]!);
+      writeFileSync(stale, readFileSync(stale, "utf8").replace('"9.8.7-rc.0"', '"0.0.1"'));
+      const drift = run("ci/bump-version.mjs", ["--check", "--root", root]);
+      expect(drift.status).toBe(1);
+      expect(drift.stderr).toContain("src/effects/effect-baseline.ts");
+      expect(drift.stderr).toContain("0.0.1");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a missing, v-prefixed, or non-semver version without writing", () => {
+    const root = scratchRoot();
+    try {
+      for (const args of [[], ["v1.2.3"], ["1.2"], ["latest"]]) {
+        const result = run("ci/bump-version.mjs", [...args, "--root", root]);
+        expect(result.status, args.join(" ")).toBe(1);
+        expect(result.stderr).toContain("usage:");
+      }
+      expect(readFileSync(join(root, "package.json"), "utf8")).toBe(readFileSync("package.json", "utf8"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("extracts one version's release notes from release-please and git-cliff headings", () => {
+    const root = mkdtempSync(join(tmpdir(), "uneffect-notes-"));
+    try {
+      const changelog = join(root, "CHANGELOG.md");
+      writeFileSync(changelog, [
+        "# Changelog", "", "Header.", "",
+        "## 0.6.0 (2026-12-01)", "", "### Added", "", "- Cliff entry by @someone", "",
+        "## 0.6.0-rc.0 (2026-11-30)", "", "- Candidate entry", "",
+        "## [0.5.1](https://github.com/mizchi/uneffect/compare/v0.5.0...v0.5.1) (2026-09-29)", "",
+        "### Fixed", "", "- Release-please entry", "",
+        "## 0.5.0", "", "- Plain entry", "",
+        "## 0.4.0 - 2026-09-17", "", "- Dated entry", "",
+      ].join("\n"));
+      const notes = (version: string, env: Record<string, string> = {}) =>
+        run("ci/release-notes.mjs", [...(version === "" ? [] : [version]), "--changelog", changelog], env);
+
+      expect(notes("0.6.0").stdout).toBe("### Added\n\n- Cliff entry by @someone\n");
+      expect(notes("0.6.0-rc.0").stdout).toBe("- Candidate entry\n");
+      expect(notes("0.5.1").stdout).toBe("### Fixed\n\n- Release-please entry\n");
+      expect(notes("0.5.0").stdout).toBe("- Plain entry\n");
+      expect(notes("0.4.0").stdout).toBe("- Dated entry\n");
+      expect(notes("", { GITHUB_REF_NAME: "v0.5.1" }).stdout).toBe("### Fixed\n\n- Release-please entry\n");
+      const missing = notes("0.5");
+      expect(missing.status).toBe(0);
+      expect(missing.stdout).toBe("");
+      expect(run("ci/release-notes.mjs", ["0.5.1", "--changelog", join(root, "absent.md")]).stdout).toBe("");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the changelog prependable by git-cliff", () => {
+    const changelog = readFileSync("CHANGELOG.md", "utf8"), cliff = readFileSync("cliff.toml", "utf8");
+    const header = /^header = """\n([\s\S]*?)"""$/mu.exec(cliff)?.[1];
+    expect(header).toBeDefined();
+    expect(changelog.startsWith(`${header}\n## `)).toBe(true);
+    expect(changelog).not.toContain("## Unreleased");
+    const current = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
+    expect(run("ci/release-notes.mjs", [current.version]).stdout).not.toBe("");
   });
 });
