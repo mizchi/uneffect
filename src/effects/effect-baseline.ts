@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
-/** Kept release-tested with package.json without loading the TypeScript 6 evidence path. */
-export const effectBaselineToolVersion = "0.5.1"; // x-release-please-version
+/** Kept equal to package.json by ci/bump-version.mjs without loading the TypeScript 6 evidence path. */
+export const effectBaselineToolVersion = "0.5.1"; // x-release-version
 
 export interface EffectBaselineSummary {
   fileName?: string;

@@ -2,8 +2,6 @@
 
 All notable changes to Uneffect are documented in this file.
 
-## Unreleased
-
 ## [0.5.1](https://github.com/mizchi/uneffect/compare/v0.5.0...v0.5.1) (2026-09-29)
 
 ### Changed
