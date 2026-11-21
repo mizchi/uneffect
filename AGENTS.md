@@ -1,5 +1,16 @@
 # 開発方針
 
+## TODO: finish the release migration (delete this section when done)
+
+The release flow moved from release-please to tag-triggered npm publishing in https://github.com/mizchi/uneffect/pull/80. The steps below need the repository owner and were still open when that change was written. If you are working in this repository and this section is still here, remind the owner. Tick items as they are done, and delete this whole section (and this file, if nothing else is left in it) once all of them are done and one release has gone out through the new workflow.
+
+- [ ] Protect release tags: `protect-tags.sh  mizchi/uneffect` (npm-release skill)
+- [ ] `npm trust list @mizchi/uneffect`; if `publish.yml` is not listed: `npm trust github @mizchi/uneffect --repo mizchi/uneffect --file publish.yml --allow-publish -y`
+- [ ] Delete the `RELEASE_PLEASE_APP_PRIVATE_KEY` secret if it exists
+- [ ] Push the first release tag and confirm the workflow publishes to npm and creates the GitHub Release (it has never run)
+
+`tsc --noEmit` and the release-readiness / baseline / ci-tiers / repository-artifacts tests (47) passed locally. The full `pnpm test` (needs native Z3) and `pnpm build` were not run.
+
 - ユーザーには日本語で答える。
 - TDD（探索 → Red → Green → Refactoring）で開発する。
 - 関心の分離、状態とロジックの分離を保つ。公開 API・型のコントラクトと実装を分ける。
